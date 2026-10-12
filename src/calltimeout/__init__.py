@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from ._api import Mode, run
-from ._errors import CallTimeout
+from ._decorator import with_timeout
+from ._errors import CallCrashed, CallTimeout
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-__all__ = ["CallTimeout", "Mode", "run"]
+__all__ = ["CallCrashed", "CallTimeout", "Mode", "run", "with_timeout"]

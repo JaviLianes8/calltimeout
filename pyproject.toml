@@ -1,21 +1,29 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "calltimeout"
-version = "0.1.0"
-description = "Run a callable with a wall-clock timeout and get a typed result or a clean TimeoutError, with an honest choice of mechanism"
+version = "0.2.0"
+description = "Run a callable with a wall-clock timeout in a thread, a process or under SIGALRM, typed, with an honest choice of mechanism"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Javier Lianes", email = "javier@lianes8studio.com" }]
-keywords = []
+keywords = ["timeout", "deadline", "thread", "multiprocessing", "signal", "sigalrm", "decorator", "paramspec"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
 ]
 dependencies = []
