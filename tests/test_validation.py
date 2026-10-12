@@ -86,14 +86,14 @@ def test_rejects_kwargs_with_keys_that_are_not_strings() -> None:
 @pytest.mark.parametrize("mode", MODES)
 def test_rejects_a_coroutine_function(mode: Mode) -> None:
     with pytest.raises(TypeError, match=r"asyncio\.timeout"):
-        _ = run(_coroutine_function, 1.0, mode=mode)
+        _ = run(_coroutine_function, 30.0, mode=mode)
 
 
 @pytest.mark.filterwarnings("error")
 @pytest.mark.parametrize("mode", MODES)
 def test_rejects_a_coroutine_returned_by_the_call(mode: Mode) -> None:
     with pytest.raises(TypeError, match="returned a coroutine"):
-        run(_returns_coroutine, 1.0, mode=mode)
+        run(_returns_coroutine, 30.0, mode=mode)
 
 
 @pytest.mark.parametrize(

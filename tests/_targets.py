@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import signal
+import sys
 import threading
 import time
 
@@ -95,3 +96,21 @@ def decorated_pid(offset: int) -> int:
 def decorated_slow(seconds: float) -> str:
     time.sleep(seconds)
     return "done"
+
+
+def crash_leaving_grandchild(seconds: float) -> None:
+    # The forked grandchild inherits the result pipe and keeps it open after we die.
+    if sys.platform != "win32" and os.fork() == 0:
+        time.sleep(seconds)
+        os._exit(0)
+    os._exit(5)
+
+
+def cleans_up_on_sigterm(marker: str, seconds: float) -> None:
+    # SIGTERM becomes SystemExit, so the finally clause gets its grace period to run.
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(0))
+    try:
+        time.sleep(seconds)
+    finally:
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write("cleaned up")

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import multiprocessing
 import pickle
+import time
 import traceback
 from collections.abc import Callable, Mapping, Sequence
 from multiprocessing.connection import Connection, wait
 from multiprocessing.process import BaseProcess
 from multiprocessing.reduction import ForkingPickler
-from typing import Protocol, TypeVar, cast
+from typing import Any, Protocol, TypeVar, cast
 
 from ._errors import CallCrashed, Expired
 from ._thread import thread_name
@@ -19,6 +20,9 @@ T = TypeVar("T")
 
 # Seconds a terminated child gets to exit before it is killed (SIGTERM can be ignored).
 GRACE = 1.0
+
+# Longest sleep between checks that the child is still alive.
+POLL = 0.25
 
 # The target this child process was started for, so a decorated function knows it is
 # already inside its own child and must not start another one.
@@ -84,10 +88,29 @@ def _child(conn: Connection, call: object) -> None:
         conn.close()
 
 
+def _await(reader: Any, process: BaseProcess, timeout: float) -> list[object]:
+    """Wait for a result or the child's exit, whichever comes first; [] on overrun."""
+    deadline = time.monotonic() + timeout
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return []
+        ready = wait([reader, process.sentinel], min(left, POLL))
+        if ready:
+            return list(ready)
+        if not process.is_alive():
+            # A grandchild forked by the call inherits the pipe and, under fork and
+            # spawn, the sentinel too, hiding the exit from both; waitpid still sees it.
+            return [process.sentinel]
+
+
 def _stop(process: BaseProcess) -> None:
     if process.is_alive():
         process.terminate()
-        process.join(GRACE)
+        # Not join(GRACE): it waits on the sentinel, which a grandchild may hold open.
+        deadline = time.monotonic() + GRACE
+        while process.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.01)
         if process.is_alive():
             process.kill()
     process.join()
@@ -128,7 +151,7 @@ def run_in_process(
         process.start()
         started = True
         writer.close()
-        ready = wait([reader, process.sentinel], timeout)
+        ready = _await(reader, process, timeout)
         if not ready:
             raise Expired
         data = _receive(reader, ready)

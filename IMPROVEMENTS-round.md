@@ -11,7 +11,7 @@ Progress:
 - [x] `CallTimeout` and `CallCrashed` pickle and copy
 - [x] Contracts: typing, README examples, installed wheel e2e, POSIX run
 - [x] Docs: README, CHANGELOG, docstrings, packaging metadata
-- [ ] Gates: ruff format, ruff check, mypy --strict, pytest
+- [x] Gates: ruff format, ruff check, mypy --strict, pytest
 - [ ] Independent review findings fixed with regression tests
 - [ ] Pull request opened, guard clean
 
@@ -97,6 +97,33 @@ these gaps:
     stop on Windows and POSIX; async usage is documented.
 11. **Packaging.** Classifiers for supported versions and operating systems, keywords,
     version agreement with the metadata, and an installed-wheel e2e test.
+
+## Findings while implementing
+
+- On Windows, a process start that fails half way through pickling its arguments (a
+  lambda, say) left the next process-mode call of the same parent answering on a stale
+  pipe handle: the child ran, sent its result, and the parent saw a crash with exit code
+  0. Plain `multiprocessing` with a `Pipe` shows the same. Process mode now pickles the
+  call into bytes before it creates the pipe or the process, so a start cannot fail half
+  way (not under fork, where nothing is pickled).
+- Under fork and spawn on POSIX, a grandchild forked by the call inherits both the result
+  pipe and the sentinel pipe, so neither reports the child's exit while the grandchild
+  lives. Waiting now also checks `is_alive()` (waitpid) every 0.25 seconds, and the grace
+  period after `terminate()` is measured the same way instead of with `join(timeout)`.
+
+## Verification
+
+- Windows, Python 3.13 and 3.11; Linux (WSL), Python 3.14 under forkserver, fork and
+  spawn. `mypy --strict --python-version 3.10` on both platforms.
+- Mutations: each guard was removed in turn (pickle reducers, every validation check,
+  the zero-budget shortcut, the signal-mode platform check order, context copying,
+  thread names, the private expiry signal, up-front pickling, child cleanup, the rebuild
+  check, the remote traceback, result pickling, the decorator's child unwrapping and
+  `functools.wraps`; on Linux the waitpid fallback, the grace period, the kill, and in
+  signal mode the swallowed-timeout check, the outer re-arm, passing ticks on, handler
+  restore, disarming, the main-thread check and the deadline check). Every one made the
+  suite fail. Passing the process sentinel to `wait` is a latency optimisation: with the
+  waitpid fallback no test can fail without it.
 
 ## Out of scope
 

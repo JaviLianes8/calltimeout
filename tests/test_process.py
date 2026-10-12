@@ -7,6 +7,7 @@ import os
 import pickle
 import sys
 import time
+from pathlib import Path
 
 import _targets
 import pytest
@@ -99,6 +100,23 @@ def test_a_child_that_ignores_sigterm_is_killed(monkeypatch: pytest.MonkeyPatch)
         run(_targets.ignores_sigterm, 2.0, args=(60.0,), mode="process")
     assert time.monotonic() - started < 20.0
     assert _no_children_left()
+
+
+@posix_only
+def test_a_terminated_child_gets_a_grace_period_to_clean_up(tmp_path: Path) -> None:
+    marker = tmp_path / "marker"
+    with pytest.raises(CallTimeout):
+        run(_targets.cleans_up_on_sigterm, 2.0, args=(str(marker), 60.0), mode="process")
+    assert marker.read_text(encoding="utf-8") == "cleaned up"
+
+
+@posix_only
+def test_a_crash_is_seen_even_while_a_grandchild_holds_the_pipe() -> None:
+    started = time.monotonic()
+    with pytest.raises(CallCrashed) as info:
+        run(_targets.crash_leaving_grandchild, 30.0, args=(8.0,), mode="process")
+    assert info.value.exitcode == 5
+    assert time.monotonic() - started < 6.0
 
 
 def test_an_unpicklable_callable_fails_before_waiting() -> None:

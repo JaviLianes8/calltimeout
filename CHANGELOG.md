@@ -28,6 +28,8 @@ All notable changes to this project are documented here. The format follows
   unpicklable exception arrives as a `RuntimeError` stand-in), chains the child's
   traceback as the cause, kills a child that ignores SIGTERM after 1 second, and stops
   the child whenever the caller leaves early, including on `KeyboardInterrupt`.
+- Process mode notices a crashed child even while a grandchild it forked keeps the
+  pipes open.
 - Process mode pickles the call before starting the child, so a failed start cannot
   leave the next call reading from a stale pipe on Windows.
 - `default` is returned only for the call's own timeout; a `CallTimeout` from a nested
