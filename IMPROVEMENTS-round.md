@@ -2,13 +2,13 @@
 
 Progress:
 - [x] Brainstorm ranked improvements (this file)
-- [ ] Validation: timeout type, NaN, infinity, TIMEOUT_MAX, zero budget, coroutine functions
-- [ ] Only this call's own timeout returns `default`; nested timeouts propagate
-- [ ] Process mode: crash detection, unpicklable results and errors, kill after a grace period, cleanup on interrupt, remote traceback
-- [ ] Thread mode: context variables, named threads, coroutine results
-- [ ] Signal mode for POSIX main threads, with nesting and swallowed timeouts
-- [ ] `with_timeout` decorator that keeps the signature (ParamSpec), process mode included
-- [ ] `CallTimeout` and `CallCrashed` pickle and copy
+- [x] Validation: timeout type, NaN, infinity, TIMEOUT_MAX, zero budget, coroutine functions
+- [x] Only this call's own timeout returns `default`; nested timeouts propagate
+- [x] Process mode: crash detection, unpicklable results and errors, kill after a grace period, cleanup on interrupt, remote traceback
+- [x] Thread mode: context variables, named threads, coroutine results
+- [x] Signal mode for POSIX main threads, with nesting and swallowed timeouts
+- [x] `with_timeout` decorator that keeps the signature (ParamSpec), process mode included
+- [x] `CallTimeout` and `CallCrashed` pickle and copy
 - [ ] Contracts: typing, README examples, installed wheel e2e, POSIX run
 - [ ] Docs: README, CHANGELOG, docstrings, packaging metadata
 - [ ] Gates: ruff format, ruff check, mypy --strict, pytest

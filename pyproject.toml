@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "calltimeout"
-version = "0.1.0"
+version = "0.2.0"
 description = "Run a callable with a wall-clock timeout and get a typed result or a clean TimeoutError, with an honest choice of mechanism"
 readme = "README.md"
 requires-python = ">=3.10"
