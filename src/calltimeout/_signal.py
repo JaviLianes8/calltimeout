@@ -29,6 +29,20 @@ def check_signal_mode() -> None:
         raise RuntimeError("mode 'signal' only works in the main thread")
 
 
+def _caused_by(exc: BaseException, raised: CallTimeout) -> bool:
+    """True if exc is our timeout or an Exception raised while handling it."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if current is raised:
+            return True
+        if not isinstance(current, Exception):
+            return False  # KeyboardInterrupt, SystemExit and friends always propagate
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def _pass_on(previous: Any, signum: int, frame: FrameType | None) -> None:
     """Give an enclosing timer's tick to the handler that was there before."""
     if callable(previous):
@@ -60,6 +74,7 @@ def run_with_signal(
     outer_delay, outer_interval = signal.getitimer(signal.ITIMER_REAL)
     outer_due = start + outer_delay if outer_delay > 0 else None
     fired = False
+    raised = CallTimeout(timeout)
 
     def arm(now: float) -> None:
         due = deadline if outer_due is None else min(deadline, outer_due)
@@ -70,33 +85,39 @@ def run_with_signal(
         now = time.monotonic()
         if now >= deadline:
             fired = True
-            raise CallTimeout(timeout)
+            raise raised
         if outer_due is not None and now >= outer_due:
             signal.setitimer(signal.ITIMER_REAL, 0)
-            _pass_on(previous, signum, frame)
-            # The enclosing handler may have re-armed the timer: that is its new schedule.
-            delay, interval = signal.getitimer(signal.ITIMER_REAL)
-            now = time.monotonic()
-            if delay > 0:
-                outer_due, outer_interval = now + delay, interval
-            else:
-                outer_due = now + outer_interval if outer_interval > 0 else None
-        arm(now)  # also covers waking a little early: wait for whichever is due next
+            # This tick is consumed even if the handler raises: never deliver it twice.
+            outer_due = now + outer_interval if outer_interval > 0 else None
+            try:
+                _pass_on(previous, signum, frame)
+            finally:
+                # The enclosing handler may have re-armed the timer: its new schedule.
+                delay, interval = signal.getitimer(signal.ITIMER_REAL)
+                now = time.monotonic()
+                if delay > 0:
+                    outer_due, outer_interval = now + delay, interval
+                arm(now)
+            return
+        arm(now)  # woke a little early: wait for whichever is due next
 
+    if signal.getsignal(signal.SIGALRM) is None:
+        raise RuntimeError("SIGALRM has a handler set outside Python that could not be restored")
     previous = signal.signal(signal.SIGALRM, expire)
     try:
         arm(start)
         try:
             value = fn(*args, **kwargs)
         except BaseException as exc:
-            if fired:
+            if fired and _caused_by(exc, raised):
                 raise Expired from exc
             raise
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0)
     except CallTimeout as exc:
         # The alarm can land after the call returned but before the timer was disarmed.
-        if fired:
+        if exc is raised:
             raise Expired from exc
         raise
     finally:
@@ -105,6 +126,6 @@ def run_with_signal(
             left = outer_due - time.monotonic()
             signal.setitimer(signal.ITIMER_REAL, max(left, _SOON), outer_interval)
     if fired:
-        # The call caught the timeout and carried on; the budget was still exceeded.
+        # The call caught the timeout and returned later; the budget was still exceeded.
         raise Expired
     return reject_coroutine(value)

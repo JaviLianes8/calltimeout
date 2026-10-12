@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import signal
 import sys
 import threading
@@ -124,3 +125,56 @@ def test_a_periodic_outer_timer_is_not_starved() -> None:
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, signal.SIG_DFL)
+
+
+class _Alarm(Exception):
+    pass
+
+
+def test_a_raising_outer_handler_is_called_once() -> None:
+    calls: list[int] = []
+
+    def outer(signum: int, frame: FrameType | None) -> None:
+        calls.append(signum)
+        raise _Alarm
+
+    signal.signal(signal.SIGALRM, outer)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, 0.1)
+        with pytest.raises(_Alarm):
+            run(_targets.slow, 5.0, args=(2.0,), mode="signal")
+        time.sleep(0.3)
+        assert len(calls) == 1
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, signal.SIG_DFL)
+
+
+def _interrupted_after_timeout() -> None:
+    try:
+        time.sleep(30.0)
+    except Exception:
+        # Raised while handling the timeout, so the timeout is its __context__.
+        raise KeyboardInterrupt from None
+
+
+def _unrelated_error_after_timeout() -> None:
+    with contextlib.suppress(Exception):
+        time.sleep(30.0)
+    raise LookupError("unrelated")
+
+
+def test_keyboard_interrupt_after_a_swallowed_timeout_propagates() -> None:
+    with pytest.raises(KeyboardInterrupt):
+        run(_interrupted_after_timeout, 0.1, mode="signal", default="d")
+
+
+def test_an_unrelated_error_after_a_swallowed_timeout_propagates() -> None:
+    with pytest.raises(LookupError):
+        run(_unrelated_error_after_timeout, 0.1, mode="signal", default="d")
+
+
+def test_a_handler_set_outside_python_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(signal, "getsignal", lambda signum: None)
+    with pytest.raises(RuntimeError, match="outside Python"):
+        run(_targets.echo, 1.0, args=(1,), mode="signal")

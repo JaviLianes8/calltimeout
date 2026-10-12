@@ -7,6 +7,8 @@ import signal
 import sys
 import threading
 import time
+import types
+from typing import Any
 
 from calltimeout import run, with_timeout
 
@@ -114,3 +116,36 @@ def cleans_up_on_sigterm(marker: str, seconds: float) -> None:
     finally:
         with open(marker, "w", encoding="utf-8") as handle:
             handle.write("cleaned up")
+
+
+def put_in_queue(queue: Any, lock: Any) -> str:
+    with lock:
+        queue.put("sent")
+    return "put"
+
+
+def write_later(marker: str) -> str:
+    # A non-daemon thread the child's normal shutdown waits for.
+    def write() -> None:
+        time.sleep(0.2)
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write("flushed")
+
+    threading.Thread(target=write).start()
+    return "returned"
+
+
+def touch(marker: str) -> None:
+    with open(marker, "w", encoding="utf-8") as handle:
+        handle.write("ran")
+
+
+def child_only_result() -> object:
+    # Pickles in the child, but its module does not exist in the parent.
+    module = types.ModuleType("ghost_module")
+    exec("class Ghost:\n    pass\n", module.__dict__)
+    sys.modules["ghost_module"] = module
+    return module.Ghost()
+
+
+assigned_pid = with_timeout(30.0, mode="process")(pid)

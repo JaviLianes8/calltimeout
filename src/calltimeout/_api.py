@@ -10,7 +10,7 @@ from ._errors import CallTimeout, Expired
 from ._process import run_in_process
 from ._signal import check_signal_mode, run_with_signal
 from ._thread import run_in_thread
-from ._validate import check_call, check_timeout
+from ._validate import check_call, check_mode, check_timeout
 
 T = TypeVar("T")
 D = TypeVar("D")
@@ -77,9 +77,8 @@ def run(
     """
     seconds = check_timeout(timeout)
     check_call(fn, args, kwargs)
-    runner = RUNNERS.get(mode) if isinstance(mode, str) else None
-    if runner is None:
-        raise ValueError(f"unknown mode: {mode!r}")
+    check_mode(mode, RUNNERS)
+    runner = RUNNERS[mode]
     if mode == "signal":
         check_signal_mode()  # before the zero-budget shortcut, so misuse always surfaces
     try:
@@ -89,4 +88,4 @@ def run(
     except Expired as expired:
         if not isinstance(default, _Unset):
             return default
-        raise CallTimeout(timeout) from expired.__cause__
+        raise CallTimeout(seconds) from expired.__cause__

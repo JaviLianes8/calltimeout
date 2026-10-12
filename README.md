@@ -40,14 +40,18 @@ print(run(fetch, 0.05, args=(1.0,), default="cached"))  # cached
 `run(fn, timeout, *, args=(), kwargs=None, mode="thread", default=...)` passes `args`
 and `kwargs` to `fn`. The timeout is a number of seconds: an `int` or `float`, not
 negative, not NaN and not infinite. A zero timeout raises at once without starting the
-call. Exceptions raised by the call reach the caller unchanged. `default` is only used
+call. Exceptions raised by the call reach the caller (in process mode as a pickled copy,
+see below). `default` is only used
 for this call's own timeout: a `CallTimeout` from a nested call inside `fn` propagates.
 `Mode` is the `Literal` type of the three mode names, for annotating your own wrappers.
 
 ### As a decorator
 
 `with_timeout` keeps the decorated function's parameters, so type checkers still check
-every call, and the result type becomes `T | D` when a default is given:
+every call, and the result type becomes `T | D` when a default is given. In process mode
+under spawn or forkserver the child imports the function by name, so either the
+decorated function or the original must be reachable under its module and name (a
+plain `@with_timeout` at module level, or `fast = with_timeout(...)(slow)`):
 
 ```python
 import time
@@ -92,8 +96,13 @@ stopped abruptly at shutdown, so do not leave one holding a file or a transactio
 child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
 raises `CallCrashed` with its exit code as soon as it is gone, instead of a timeout. An
 exception from the child arrives with the child's traceback chained as its cause, and a
-result that cannot be pickled raises `pickle.PicklingError` straight away. Processes
-started by the call itself are not stopped with it. Targets must be importable, so
+result that cannot be pickled raises `pickle.PicklingError` straight away (and one the
+parent cannot rebuild, `pickle.UnpicklingError`). An exception that cannot be pickled
+arrives as a `RuntimeError` naming it, and `sys.exit()` in the call raises `SystemExit`
+in the caller like any other exception. After the result arrives the child gets up to
+1 second to shut down on its own (atexit handlers, non-daemon threads) before it is
+terminated. Locks, queues and other `multiprocessing` objects can be passed as
+arguments. Processes started by the call itself are not stopped with it. Targets must be importable, so
 define them at module level, and guard the entry point of a script with
 `if __name__ == "__main__":` as `multiprocessing` requires.
 
@@ -120,8 +129,12 @@ line it has reached. Since PEP 475 a signal handler that raises also stops block
 system calls such as `time.sleep` or a socket read. It needs no thread and no pickling,
 but it only works in the main thread on POSIX: elsewhere it raises `RuntimeError`, and
 on Windows `NotImplementedError`. A call that catches the timeout and carries on still
-ends in `CallTimeout`. Timers already armed with `setitimer` or `alarm` keep their
-schedule, so signal-mode calls can be nested.
+ends in `CallTimeout`, but only once it returns: the timer fires once, so a loop that
+keeps catching `OSError` (which `TimeoutError` is) runs on until it gives up. An
+exception raised while handling the timeout counts as the timeout; `KeyboardInterrupt`,
+`SystemExit` and unrelated errors propagate. Timers already armed with `setitimer` or
+`alarm` keep their schedule, so signal-mode calls can be nested, but a call that resets
+`ITIMER_REAL` itself cancels the deadline.
 
 ```python
 import sys

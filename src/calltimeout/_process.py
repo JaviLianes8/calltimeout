@@ -5,16 +5,15 @@ from __future__ import annotations
 import multiprocessing
 import pickle
 import time
-import traceback
 from collections.abc import Callable, Mapping, Sequence
 from multiprocessing.connection import Connection, wait
 from multiprocessing.process import BaseProcess
-from multiprocessing.reduction import ForkingPickler
 from typing import Any, Protocol, TypeVar, cast
 
 from ._errors import CallCrashed, Expired
 from ._thread import thread_name
 from ._validate import reject_coroutine
+from ._wire import pack_error, pack_result, prepickle, unpack
 
 T = TypeVar("T")
 
@@ -42,47 +41,16 @@ class _Reader(Protocol):
     def recv_bytes(self) -> bytes: ...
 
 
-class RemoteTraceback(Exception):
-    """Carries the child's formatted traceback as the cause of a re-raised error."""
-
-    def __init__(self, text: str) -> None:
-        super().__init__(text)
-        self.text = text
-
-    def __str__(self) -> str:
-        return self.text
-
-
-def _pack_error(exc: BaseException) -> bytes:
-    text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    try:
-        data = pickle.dumps((False, exc, text))
-        pickle.loads(data)  # an exception can pickle and still fail to rebuild
-    except Exception as problem:
-        name = f"{type(exc).__module__}.{type(exc).__qualname__}"
-        stand_in = RuntimeError(f"{name}: {exc} (not picklable: {problem!r})")
-        data = pickle.dumps((False, stand_in, text))
-    return data
-
-
-def _child(conn: Connection, call: object) -> None:
+def _child(call: object, conn: Connection) -> None:
     if isinstance(call, bytes):
         call = pickle.loads(call)
-    fn, args, kwargs = cast(
-        tuple[Callable[..., object], tuple[object, ...], dict[str, object]], call
-    )
+    fn, args, kwargs = cast(tuple[Callable[..., object], tuple[object, ...], dict[str, Any]], call)
     _targets.append(fn)
     try:
         try:
-            value = reject_coroutine(fn(*args, **kwargs))
+            data = pack_result(reject_coroutine(fn(*args, **kwargs)))
         except BaseException as exc:
-            data = _pack_error(exc)
-        else:
-            try:
-                data = pickle.dumps((True, value, ""))
-            except Exception as problem:
-                error = pickle.PicklingError(f"the call's result cannot be sent back: {problem!r}")
-                data = _pack_error(error)
+            data = pack_error(exc)
         conn.send_bytes(data)
     finally:
         conn.close()
@@ -104,16 +72,25 @@ def _await(reader: Any, process: BaseProcess, timeout: float) -> list[object]:
             return [process.sentinel]
 
 
-def _stop(process: BaseProcess) -> None:
-    if process.is_alive():
-        process.terminate()
-        # Not join(GRACE): it waits on the sentinel, which a grandchild may hold open.
-        deadline = time.monotonic() + GRACE
-        while process.is_alive() and time.monotonic() < deadline:
-            time.sleep(0.01)
+def _exits_within(process: BaseProcess, seconds: float) -> bool:
+    # Not join(seconds): it waits on the sentinel, which a grandchild may hold open.
+    deadline = time.monotonic() + seconds
+    while process.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    return not process.is_alive()
+
+
+def _stop(process: BaseProcess, *, finished: bool) -> None:
+    """End the child: a finished one first gets to exit on its own (atexit, flushes)."""
+    try:
+        if not (finished and _exits_within(process, GRACE)) and process.is_alive():
+            process.terminate()
+            _exits_within(process, GRACE)
+    finally:
+        # Also reached on KeyboardInterrupt during the grace period.
         if process.is_alive():
             process.kill()
-    process.join()
+        process.join()
 
 
 def _receive(reader: _Reader, ready: Sequence[object]) -> bytes | None:
@@ -139,14 +116,10 @@ def run_in_process(
     that exits without a result raises CallCrashed as soon as it is gone.
     """
     ctx = multiprocessing.get_context()
-    call: object = (fn, args, dict(kwargs))
-    if ctx.get_start_method() != "fork":
-        # Pickle up front: a start that fails half way through pickling can leave the
-        # next child of this process writing to a stale pipe handle (seen on Windows).
-        call = bytes(ForkingPickler.dumps(call))
+    call = prepickle(ctx.get_start_method(), (fn, args, dict(kwargs)))
     reader, writer = ctx.Pipe(duplex=False)
-    process = ctx.Process(target=_child, args=(writer, call), name=thread_name(fn))
-    started = False
+    process = ctx.Process(target=_child, args=(call, writer), name=thread_name(fn))
+    started = finished = False
     try:
         process.start()
         started = True
@@ -158,15 +131,11 @@ def run_in_process(
         if data is None:
             process.join()
             raise CallCrashed(process.exitcode)
+        finished = True
     finally:
         # Runs on every exit, including KeyboardInterrupt while waiting.
         writer.close()
         reader.close()
         if started:
-            _stop(process)
-    ok, payload, text = pickle.loads(data)
-    if ok:
-        return cast(T, payload)
-    error = cast(BaseException, payload)
-    error.__cause__ = RemoteTraceback(text)
-    raise error
+            _stop(process, finished=finished)
+    return cast(T, unpack(data))

@@ -12,7 +12,7 @@ Progress:
 - [x] Contracts: typing, README examples, installed wheel e2e, POSIX run
 - [x] Docs: README, CHANGELOG, docstrings, packaging metadata
 - [x] Gates: ruff format, ruff check, mypy --strict, pytest
-- [ ] Independent review findings fixed with regression tests
+- [x] Independent review findings fixed with regression tests
 - [ ] Pull request opened, guard clean
 
 ## Starting point
@@ -124,6 +124,29 @@ these gaps:
   restore, disarming, the main-thread check and the deadline check). Every one made the
   suite fail. Passing the process sentinel to `wait` is a latency optimisation: with the
   waitpid fallback no test can fail without it.
+
+## Review fixes
+
+- Process mode passes locks, queues and other objects that only pickle inside
+  `Process.start()` instead of refusing them (pre-pickling falls back for them).
+- A finished child is no longer terminated the moment its result arrives: it gets up to
+  1 second to exit on its own, so atexit handlers and non-daemon threads complete.
+- An interrupt during the grace period still kills and reaps the child.
+- A result the parent cannot unpickle raises `pickle.UnpicklingError` chained to the
+  cause; a stand-in error is built even when `str()` of the original fails.
+- Signal mode delivers an outer one-shot tick once even when its handler raises;
+  `KeyboardInterrupt`, `SystemExit` and errors unrelated to the timeout propagate
+  instead of becoming the default; a SIGALRM handler set outside Python is refused
+  because it could not be restored.
+- The process-mode decorator sends the original function when only the original is
+  reachable by name (`fast = with_timeout(...)(slow)`).
+- Validation: a huge int is a `ValueError`, `kwargs` must be a mapping, `with_timeout`
+  rejects an unhashable mode like `run`, `CallTimeout` reports the validated float.
+- The zero-budget test now proves the call never ran with a marker file, which works
+  across processes.
+- Documented: a swallowed signal-mode timeout ends only when the call returns, a call
+  that resets `ITIMER_REAL` cancels the deadline, `sys.exit()` in process mode raises
+  `SystemExit` in the caller, exceptions in process mode are pickled copies.
 
 ## Out of scope
 

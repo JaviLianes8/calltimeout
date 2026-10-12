@@ -13,11 +13,13 @@ All notable changes to this project are documented here. The format follows
 - `mode="signal"`: a SIGALRM timer raises `CallTimeout` inside the call, which stops
   pure Python code and blocking system calls in place. POSIX main thread only; other
   threads get `RuntimeError` and Windows `NotImplementedError`. Timers already armed
-  keep their schedule, so calls can be nested, and a call that swallows the timeout
-  still ends in `CallTimeout`.
+  keep their schedule (a raising outer handler runs once), so calls can be nested, and
+  a call that swallows the timeout still ends in `CallTimeout` when it returns, while
+  `KeyboardInterrupt`, `SystemExit` and unrelated errors propagate.
 - `with_timeout(timeout, *, mode, default)`: a decorator that keeps the wrapped
   function's signature for type checkers (`ParamSpec`), in every mode including process
-  mode for module-level functions.
+  mode for functions the child can import by name (decorated in place or assigned to a
+  new name).
 - `CallCrashed`: raised in process mode when the child exits without a result, with its
   exit code, as soon as it is gone.
 
@@ -31,7 +33,10 @@ All notable changes to this project are documented here. The format follows
 - Process mode notices a crashed child even while a grandchild it forked keeps the
   pipes open.
 - Process mode pickles the call before starting the child, so a failed start cannot
-  leave the next call reading from a stale pipe on Windows.
+  leave the next call reading from a stale pipe on Windows; locks and queues, which
+  only pickle during start, are still passed through.
+- A finished child gets up to 1 second to exit on its own before it is terminated; a
+  result the parent cannot unpickle raises `pickle.UnpicklingError`.
 - `default` is returned only for the call's own timeout; a `CallTimeout` from a nested
   call propagates.
 - Thread mode runs the call in a copy of the caller's context variables and names the
@@ -39,7 +44,9 @@ All notable changes to this project are documented here. The format follows
 - `timeout` must be a real number (not a bool), not NaN and at most
   `threading.TIMEOUT_MAX`; a zero timeout raises without starting the call. Coroutine
   functions and coroutine results are rejected with a pointer to `asyncio.timeout`.
-- `CallTimeout` keeps its `timeout` through pickle and copy.
+  `kwargs` must be a mapping, and `run` and `with_timeout` reject modes the same way.
+- `CallTimeout` keeps its `timeout` through pickle and copy, and reports the validated
+  number of seconds.
 
 ## [0.1.0]
 

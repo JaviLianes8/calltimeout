@@ -12,7 +12,7 @@ from pathlib import Path
 import _targets
 import pytest
 
-from calltimeout import CallCrashed, CallTimeout, _process, run
+from calltimeout import CallCrashed, CallTimeout, _process, _wire, run
 
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM is POSIX")
 
@@ -46,7 +46,7 @@ def test_an_exception_comes_back_with_the_childs_traceback() -> None:
     with pytest.raises(ValueError, match="boom") as info:
         run(_targets.boom, 30.0, mode="process")
     cause = info.value.__cause__
-    assert isinstance(cause, _process.RemoteTraceback)
+    assert isinstance(cause, _wire.RemoteTraceback)
     assert 'raise ValueError("boom")' in str(cause)
 
 
