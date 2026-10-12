@@ -9,8 +9,8 @@ Progress:
 - [x] Signal mode for POSIX main threads, with nesting and swallowed timeouts
 - [x] `with_timeout` decorator that keeps the signature (ParamSpec), process mode included
 - [x] `CallTimeout` and `CallCrashed` pickle and copy
-- [ ] Contracts: typing, README examples, installed wheel e2e, POSIX run
-- [ ] Docs: README, CHANGELOG, docstrings, packaging metadata
+- [x] Contracts: typing, README examples, installed wheel e2e, POSIX run
+- [x] Docs: README, CHANGELOG, docstrings, packaging metadata
 - [ ] Gates: ruff format, ruff check, mypy --strict, pytest
 - [ ] Independent review findings fixed with regression tests
 - [ ] Pull request opened, guard clean
