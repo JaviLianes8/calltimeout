@@ -13,10 +13,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from _tree import run_tree
 
 ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = json.loads((ROOT / "scripts" / "mutants.json").read_text(encoding="utf-8"))
@@ -25,7 +26,7 @@ MUTANTS = json.loads((ROOT / "scripts" / "mutants.json").read_text(encoding="utf
 def _suite(basetemp: str) -> tuple[bool, str]:
     command = [sys.executable, "-m", "pytest", "-x", "-q", "-p", "no:cacheprovider"]
     command += ["-o", "addopts=--doctest-modules", f"--basetemp={basetemp}", "src", "tests"]
-    done = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=900)
+    done = run_tree(command, ROOT, 900)
     found = re.findall(r"^(?:FAILED|ERROR) (\S+)", done.stdout, flags=re.MULTILINE)
     return done.returncode == 0, found[0] if found else done.stdout[-200:]
 
