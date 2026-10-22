@@ -38,7 +38,7 @@ Progress:
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
-| 17 | PR and trace guard | PR from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
+| 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: 58 author mutants, 57 killed; M36 killed under fork and spawn and unreachable under forkserver |
 | 19 | Five independent QA lenses | pending |
 
