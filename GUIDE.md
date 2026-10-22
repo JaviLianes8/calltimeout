@@ -13,7 +13,8 @@ NaN and at most `threading.TIMEOUT_MAX` (so not infinite). A zero timeout raises
 without starting the call. These checks, and the ones on `fn`, `args`, `kwargs` and
 `mode`, happen before anything starts, in every mode. `mode` is one of the three names
 of `Mode`, `Literal["thread", "process", "signal"]`, which you can use to annotate your
-own wrappers.
+own wrappers. `kwargs` is copied into a plain `dict` in the caller before the call starts,
+so a mapping changed later does not affect the call.
 
 When the budget runs out, `run` raises `CallTimeout`, or returns `default` if one was
 given (`None` is a valid default). An exception raised by the call reaches the caller. A
@@ -127,6 +128,8 @@ when the decorator is made, and the function when it is applied.
 In process mode under spawn or forkserver the child imports the function by name, so
 either the decorated function or the original must be reachable under its module and
 name: a plain `@with_timeout` at module level, or `fast = with_timeout(...)(slow)`.
+Each call runs in its own child, also a call made from inside the function's own child
+(a recursive function gets a new child, with its own budget, for every level).
 
 ```python
 import time

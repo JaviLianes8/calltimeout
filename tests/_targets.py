@@ -166,3 +166,9 @@ def touch_with(marker: str, extra: object) -> object:
 
 def kill_self(signum: int) -> None:
     os.kill(os.getpid(), signum)
+
+
+@with_timeout(60.0, mode="process")
+def nested_pids(depth: int) -> list[int]:
+    # Each level calls the decorated function again from inside its own child.
+    return [os.getpid(), *(nested_pids(depth - 1) if depth else [])]
