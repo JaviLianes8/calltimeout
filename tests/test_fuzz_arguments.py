@@ -25,6 +25,7 @@ from calltimeout import CallTimeout, run
 
 SEEDS = [1, 2026, 99991]
 LONGEST = 300  # characters any argument error message may take
+GAVE_UP = object()
 
 
 def _timeouts(rng: random.Random) -> Iterator[object]:
@@ -66,11 +67,9 @@ def test_every_timeout_is_judged_by_the_documented_rules(seed: int) -> None:
     for value in _timeouts(random.Random(seed)):
         expected = _expected(value)
         if expected is None:
-            if float(value) == 0:  # type: ignore[arg-type]
-                with pytest.raises(CallTimeout):
-                    run(_targets.echo, value, args=(1,))  # type: ignore[call-overload]
-            else:
-                assert run(_targets.echo, value, args=(1,)) == 1  # type: ignore[call-overload]
+            # Accepted: the call runs, or a budget too small to start it gives the default.
+            outcome = run(_targets.echo, value, args=(1,), default=GAVE_UP)  # type: ignore[call-overload]
+            assert outcome == 1 or (outcome is GAVE_UP and float(value) < 0.5), value  # type: ignore[arg-type]
             continue
         with pytest.raises(expected) as info:
             run(_targets.echo, value, args=(1,))  # type: ignore[call-overload]

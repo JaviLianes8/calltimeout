@@ -46,9 +46,10 @@ def test_join_says_nothing_about_a_timeout_so_is_alive_decides() -> None:
     assert returned is None
     assert worker.is_alive()
     event.set()
+    release = threading.Event()
     with pytest.raises(CallTimeout):
-        run(_targets.blocks_until_gate, 0.05)
-    _targets.gate.set()
+        run(release.wait, 0.05, args=(30.0,))
+    release.set()
 
 
 def test_a_lingering_call_runs_in_a_daemon_thread() -> None:
