@@ -28,6 +28,9 @@ def check_timeout(timeout: object) -> float:
         seconds = float(timeout) + 0.0  # + 0.0 turns -0.0 into 0.0
     except OverflowError:
         raise ValueError(f"timeout must be at most {threading.TIMEOUT_MAX} seconds") from None
+    except Exception as exc:
+        # A Real whose own conversion fails: still a bad argument, reported as one.
+        raise TypeError(f"timeout {type_name(timeout)} cannot be read as seconds") from exc
     if math.isnan(seconds):
         raise ValueError("timeout must be a number, not NaN")
     if seconds < 0:

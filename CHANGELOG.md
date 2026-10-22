@@ -21,6 +21,8 @@ changes below are against 0.2.0 as tagged in the repository.
 - `CallTimeout` and `CallCrashed` are shown and pickled as `calltimeout.CallTimeout` and
   `calltimeout.CallCrashed`, so a pickle never names a private module, and they keep
   extra attributes (such as notes) through pickle and copy.
+- A real-number timeout whose conversion to `float` fails raises `TypeError` (the
+  conversion's own error is chained as the cause).
 - Error messages are bounded: a quoted value or name is cut after 60 characters, a
   quoted exception after 300, and an integer of more than 64 bits is described by its
   size instead of printed.
@@ -36,7 +38,8 @@ changes below are against 0.2.0 as tagged in the repository.
 - Thread mode measures the budget from the start of `run`, including starting the thread.
 - The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
   only exists from Python 3.11.
-- Every public name has a docstring with an example that runs as a doctest.
+- Every public name has a docstring with an example that runs as a doctest, and a new
+  GUIDE covers each mode, every error and use from async code.
 - `Development Status :: 5 - Production/Stable`.
 
 ## [0.2.0]

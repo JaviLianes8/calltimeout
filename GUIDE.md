@@ -149,7 +149,7 @@ print(lookup("id"))  # None
 |---|---|
 | `CallTimeout` (a `TimeoutError`) | The budget ran out and no default was given |
 | `CallCrashed` (a `RuntimeError`) | Process mode: the child exited without a result |
-| `TypeError` | `timeout` is not a real number, `fn` is not callable or is a coroutine function, `args` is not a tuple, `kwargs` is not a mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine |
+| `TypeError` | `timeout` is not a real number (or one that fails to convert to `float`), `fn` is not callable or is a coroutine function, `args` is not a tuple, `kwargs` is not a mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine |
 | `ValueError` | `timeout` is negative, NaN or above `threading.TIMEOUT_MAX`, or `mode` is not one of the three names |
 | `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python |
 | `NotImplementedError` | Signal mode on Windows |
