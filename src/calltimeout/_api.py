@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from enum import Enum
+from numbers import Real
 from typing import Final, Literal, TypeVar, overload
 
 from ._errors import CallTimeout, Expired
@@ -16,6 +17,19 @@ T = TypeVar("T")
 D = TypeVar("D")
 
 Mode = Literal["thread", "process", "signal"]
+Mode.__doc__ = """The names of the three mechanisms ``run`` and ``with_timeout`` accept.
+
+Use it to annotate your own wrappers, so type checkers reject any other name.
+
+>>> from typing import get_args
+>>> from calltimeout import Mode, run
+>>> def quick(mode: Mode) -> int:
+...     return run(pow, 5.0, args=(2, 3), mode=mode)
+>>> get_args(Mode)
+('thread', 'process', 'signal')
+>>> quick("thread")
+8
+"""
 
 RUNNERS: Final = {
     "thread": run_in_thread,
@@ -39,7 +53,7 @@ UNSET: Final = _Unset.token
 @overload
 def run(
     fn: Callable[..., T],
-    timeout: float,
+    timeout: float | Real,
     *,
     args: tuple[object, ...] = ...,
     kwargs: Mapping[str, object] | None = ...,
@@ -50,7 +64,7 @@ def run(
 @overload
 def run(
     fn: Callable[..., T],
-    timeout: float,
+    timeout: float | Real,
     *,
     args: tuple[object, ...] = ...,
     kwargs: Mapping[str, object] | None = ...,
@@ -61,7 +75,7 @@ def run(
 
 def run(
     fn: Callable[..., T],
-    timeout: float,
+    timeout: float | Real,
     *,
     args: tuple[object, ...] = (),
     kwargs: Mapping[str, object] | None = None,
@@ -81,7 +95,8 @@ def run(
     ``CallTimeout`` is raised, or ``default`` is returned if one is given. An exception
     raised by fn reaches the caller, and a ``CallTimeout`` from a nested call inside fn
     always propagates. Bad arguments raise ``TypeError`` or ``ValueError`` before
-    anything starts.
+    anything starts; in process mode a call that cannot be pickled raises
+    ``pickle.PicklingError`` before any process starts.
 
     >>> import math, time
     >>> from calltimeout import CallTimeout, run

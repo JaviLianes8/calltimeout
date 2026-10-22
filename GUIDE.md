@@ -2,7 +2,7 @@
 
 The [README](https://github.com/JaviLianes8/calltimeout/blob/main/README.md) shows the
 basics. This guide covers each mechanism in depth, the errors, nesting and async code.
-Every example here runs as a test.
+Every example here is run as a script by the tests.
 
 ## The call
 
@@ -56,6 +56,11 @@ The budget covers pickling the call and starting the child.
   Targets must be importable: define them at module level, and guard the entry point of
   a script with `if __name__ == "__main__":` as `multiprocessing` requires. Locks, queues
   and other `multiprocessing` objects can be passed as arguments.
+- Under spawn and forkserver a call that cannot be pickled (a lambda, a thread lock, a
+  pool, an argument nested too deeply) raises `pickle.PicklingError` before any process
+  starts, chained from pickle's own error, whose type depends on the Python version.
+  Under fork nothing is pickled on the way in.
+- The child process is named `calltimeout:<function>`, like the thread of thread mode.
 - A child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
   raises `CallCrashed` with its exit code as soon as it is gone, not a timeout, and never
   the default. The code is the one `multiprocessing` reports: the value given to
@@ -74,15 +79,21 @@ import os
 
 from calltimeout import CallCrashed, run
 
-try:
-    run(os._exit, 30.0, args=(3,), mode="process")
-except CallCrashed as exc:
-    print(f"exit code {exc.exitcode}")  # exit code 3
 
-try:
-    run(int, 30.0, args=("ten",), mode="process")
-except ValueError as exc:
-    print(type(exc.__cause__).__name__)  # RemoteTraceback
+def main() -> None:
+    try:
+        run(os._exit, 30.0, args=(3,), mode="process")
+    except CallCrashed as exc:
+        print(f"exit code {exc.exitcode}")  # exit code 3
+
+    try:
+        run(int, 30.0, args=("ten",), mode="process")
+    except ValueError as exc:
+        print(type(exc.__cause__).__name__)  # RemoteTraceback
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 ## Signal mode
@@ -97,8 +108,11 @@ interrupted once it returns to Python.
 - A call that catches the timeout and carries on still ends in `CallTimeout`, once it
   returns. The timer fires once, so a loop that keeps catching `OSError` (which
   `TimeoutError` is) runs on until it gives up.
-- An exception raised while handling the timeout counts as the timeout;
-  `KeyboardInterrupt`, `SystemExit` and unrelated errors propagate.
+- An exception raised while handling the timeout counts as the timeout, also one raised
+  `from` another cause; `KeyboardInterrupt`, `SystemExit` and unrelated errors propagate.
+- A tick that arrives less than 1 ms before the deadline (an enclosing timer, a stray
+  `SIGALRM`) ends the call there: re-arming the timer for less could lose the tick and
+  let a blocking call run to its end.
 - Timers already armed with `setitimer` or `alarm` keep their schedule and their handler
   still runs when due, so signal-mode calls can be nested; a call that resets
   `ITIMER_REAL` itself cancels the deadline. A `SIGALRM` handler installed outside Python
@@ -123,11 +137,15 @@ if sys.platform != "win32":
 `with_timeout(timeout, *, mode="thread", default=...)` makes every call of the decorated
 function go through `run`. Type checkers keep checking each call against the original
 parameters, and the result type becomes `T | D` with a default. The settings are checked
-when the decorator is made, and the function when it is applied.
+when the decorator is made, and the function when it is applied. Signal mode's platform
+and main-thread checks run at each call instead, since a decorated function can be called
+from any thread: on Windows the decorator is made, and each call raises
+`NotImplementedError`.
 
 In process mode under spawn or forkserver the child imports the function by name, so
 either the decorated function or the original must be reachable under its module and
-name: a plain `@with_timeout` at module level, or `fast = with_timeout(...)(slow)`.
+name: a plain `@with_timeout` at module level, or `fast = with_timeout(...)(slow)`. A
+callable that pickles by value (a `functools.partial`, a callable object) is sent as it is.
 Each call runs in its own child, also a call made from inside the function's own child
 (a recursive function gets a new child, with its own budget, for every level).
 
@@ -156,7 +174,8 @@ print(lookup("id"))  # None
 | `ValueError` | `timeout` is negative, NaN or above `threading.TIMEOUT_MAX`, or `mode` is not one of the three names |
 | `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python |
 | `NotImplementedError` | Signal mode on Windows |
-| `pickle.PicklingError`, `pickle.UnpicklingError` | Process mode: the result cannot be sent back, or cannot be rebuilt in the caller |
+| `pickle.PicklingError` | Process mode: `fn` or an argument cannot be sent to the child (raised before any process starts), or the result cannot be sent back |
+| `pickle.UnpicklingError` | Process mode: the result cannot be rebuilt in the caller |
 
 Both exceptions keep their attribute through pickle and copy, so they can cross process
 boundaries themselves. Messages quote at most 60 characters of any value you passed, so
@@ -181,5 +200,6 @@ async def main() -> str:
     )
 
 
-print(asyncio.run(main()))  # stopped
+if __name__ == "__main__":
+    print(asyncio.run(main()))  # stopped
 ```

@@ -10,8 +10,9 @@ All notable changes to this project are documented here. The format follows
 
 The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed` and
 `Mode`, with their parameter names, defaults and exception types, follow Semantic
-Versioning from this release on. calltimeout was never published before 1.0.0; the
-changes below are against 0.2.0 as tagged in the repository.
+Versioning from this release on. calltimeout was never published before 1.0.0, and
+0.1.0 and 0.2.0 were never tagged; the changes below are against 0.2.0, commit 9b6975c
+on `main`.
 
 ### Changed
 
@@ -33,16 +34,41 @@ changes below are against 0.2.0 as tagged in the repository.
   sending its result raises `CallCrashed`, and waiting for a crashed child's exit code
   never runs past the budget. A result that cannot be pickled raises
   `pickle.PicklingError` with the child's traceback of the failure.
+- Process mode: a call whose function or arguments cannot be pickled raises
+  `pickle.PicklingError` before any process starts, chained from pickle's own error
+  (which was raised as it was, a different type on each Python version), whose notes
+  are bounded: ten at most, each cut after 60 characters. Only the objects `multiprocessing`
+  pickles while a child starts (locks, queues) are left to the start, and only once the
+  rest of the call is known to pickle: an argument whose pickling raised
+  `NotImplementedError` (a pool), `RecursionError` or another `RuntimeError` used to fail
+  after the child was created, and on Windows it then broke the next process-mode call.
+- `with_timeout` in process mode sends a callable that pickles by value (a
+  `functools.partial`, a callable object) as it is, as `run` does; it failed with
+  `AttributeError` under spawn and forkserver.
+- A callable whose `__getattr__` raises something other than `AttributeError` is run
+  like any other; that error escaped from the coroutine check in `run` and
+  `with_timeout`.
+- `timeout` is annotated `float | numbers.Real` in `run` and `with_timeout`, so type
+  checkers accept a `Fraction`, which already worked.
+- Signal mode: an exception raised with an explicit cause while handling the timeout
+  (`raise E from other`) counts as the timeout, like `raise E` and `raise E from None`;
+  it escaped as `E`.
+- Signal mode: a timer tick less than 1 ms before the deadline ends the call there.
+  The timer was re-armed for the rest, and a re-arm that short could fire before the
+  interrupted system call blocked again, so a blocking call overran by its whole length.
 - Signal mode: a timer tick that lands after the call has finished can no longer re-arm
   the timer.
 - Thread mode measures the budget from the start of `run`, including starting the thread.
 - The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
   only exists from Python 3.11.
-- Every public name has a docstring with an example that runs as a doctest, and a new
-  GUIDE covers each mode, every error and use from async code.
+- Every public name has a docstring with an example that runs as a doctest (`Mode`
+  included), and a new GUIDE covers each mode, every error and use from async code.
+  The process-mode examples guard their entry point and are tested as scripts.
 - `Development Status :: 5 - Production/Stable`.
 
-## [0.2.0]
+## [0.2.0] - 2026-10-12
+
+Never published or tagged (commit 9b6975c on `main`).
 
 ### Added
 
@@ -84,9 +110,11 @@ changes below are against 0.2.0 as tagged in the repository.
 - `CallTimeout` keeps its `timeout` through pickle and copy, and reports the validated
   number of seconds.
 
-## [0.1.0]
+## [0.1.0] - 2026-10-11
 
-- First release.
+Never published or tagged (commit a3b7c15).
+
+- First version.
 - `run(fn, timeout, *, args, kwargs, mode, default)` runs a callable under a
   wall-clock timeout and returns its typed result.
 - Raises `CallTimeout` (a subclass of `TimeoutError`) on overrun, or returns

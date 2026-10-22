@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -36,18 +38,41 @@ def _promised(name: str) -> list[str]:
 
 
 @pytest.mark.parametrize(("name", "blocks"), [("README.md", 2), ("GUIDE.md", 5)])
-def test_every_example_runs_and_prints_what_its_comments_say(
-    name: str, blocks: int, capsys: pytest.CaptureFixture[str]
+def test_every_example_runs_as_a_script_and_prints_what_its_comments_say(
+    name: str, blocks: int, tmp_path: Path
 ) -> None:
+    # Each block is saved and run as "python example.py", the way a reader runs it, so
+    # spawn and forkserver re-import it as the main module like any script.
     found = _python_blocks(name)
     assert len(found) == blocks
-    for block in found:
-        exec(compile(block, name, "exec"), {"__name__": "docs"})
+    env = {**os.environ, "PYTHONPATH": str(Path(calltimeout.__file__).resolve().parents[1])}
+    printed: list[str] = []
+    for number, block in enumerate(found):
+        script = tmp_path / f"example_{number}.py"
+        script.write_text(block, encoding="utf-8")
+        done = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert done.returncode == 0, (name, number, done.stderr)
+        printed += done.stdout.splitlines()
     expected = _promised(name)
     if sys.platform == "win32":
         expected = [line for line in expected if line not in POSIX_ONLY]
-    assert capsys.readouterr().out.splitlines() == expected
+    assert printed == expected
     assert len(expected) >= 2
+
+
+@pytest.mark.parametrize("name", DOCS)
+def test_every_process_example_guards_its_entry_point(name: str) -> None:
+    # Unguarded, it works under fork and crashes under spawn and forkserver.
+    for block in _python_blocks(name):
+        if 'mode="process"' in block:
+            assert '\nif __name__ == "__main__":\n' in block, block
 
 
 def test_every_public_name_is_documented_in_both_files() -> None:

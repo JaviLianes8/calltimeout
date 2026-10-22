@@ -119,10 +119,23 @@ def test_a_crash_is_seen_even_while_a_grandchild_holds_the_pipe() -> None:
     assert time.monotonic() - started < 6.0
 
 
+@posix_only
+@pytest.mark.parametrize("method", ["fork", "spawn", "forkserver"])
+def test_a_crash_behind_a_grandchild_is_seen_under_every_start_method(method: str) -> None:
+    # Each start method hands the sentinel to the grandchild differently, so the gate
+    # covers all three whatever the default is.
+    previous = multiprocessing.get_start_method()
+    multiprocessing.set_start_method(method, force=True)
+    try:
+        test_a_crash_is_seen_even_while_a_grandchild_holds_the_pipe()
+    finally:
+        multiprocessing.set_start_method(previous, force=True)
+
+
 def test_an_unpicklable_callable_fails_before_waiting() -> None:
     if multiprocessing.get_start_method() == "fork":
         pytest.skip("fork copies the callable instead of pickling it")
-    with pytest.raises((pickle.PicklingError, AttributeError, TypeError)):
+    with pytest.raises(pickle.PicklingError, match="cannot be sent to the child process"):
         run(lambda: 1, 30.0, mode="process")
     assert _no_children_left()
     # A start that failed half way once made the next child answer on a stale pipe.

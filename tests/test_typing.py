@@ -27,6 +27,9 @@ with_timeout(1.0)(scale)("3")
 with_timeout(1.0)(scale)(3, bogus=1)
 run(scale, "1.0")
 with_timeout(1.0, mode="fiber")
+from fractions import Fraction
+reveal_type(run(scale, Fraction(1, 2), args=(3,)))
+reveal_type(with_timeout(Fraction(1, 2))(scale)(3))
 """
 
 
@@ -51,6 +54,8 @@ def mypy_output(tmp_path_factory: pytest.TempPathFactory) -> str:
         (10, "float | None"),
         (11, "def (value: int, factor: float =) -> float"),
         (12, "float | str"),
+        (18, "float"),
+        (19, "float"),
     ],
 )
 def test_results_and_signatures_are_typed(mypy_output: str, line: int, expected: str) -> None:

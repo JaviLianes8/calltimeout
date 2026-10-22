@@ -1,3 +1,4 @@
+import doctest
 import importlib.resources
 
 import calltimeout
@@ -24,3 +25,15 @@ def test_version_is_a_three_part_string() -> None:
 
 def test_the_package_ships_type_information() -> None:
     assert importlib.resources.files("calltimeout").joinpath("py.typed").is_file()
+
+
+def test_mode_has_its_own_docstring_with_an_example_that_runs() -> None:
+    doc = calltimeout.Mode.__doc__
+    assert doc is not None
+    assert ">>>" in doc
+    test = doctest.DocTestParser().get_doctest(doc, {}, "calltimeout.Mode", None, 0)
+    runner = doctest.DocTestRunner()
+    runner.run(test)
+    result = runner.summarize(verbose=False)
+    assert result.attempted >= 3
+    assert result.failed == 0

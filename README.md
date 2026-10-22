@@ -64,7 +64,7 @@ The trade-off is the whole point of the library, so it is stated plainly:
 | Where it works | Everywhere | Everywhere | POSIX, main thread only |
 | Pickling | Not needed | `fn`, its arguments and its result | Not needed |
 | Cost | A thread | A new process, whose start counts against the budget | A timer |
-| Context variables | A copy of the caller's, like `asyncio.to_thread` | Not shared | Shared: same thread |
+| Context variables | A copy of the caller's, like `asyncio.to_thread` | A copy under fork, the defaults under spawn and forkserver; changes never come back | Shared: same thread |
 
 ```python
 import math
@@ -72,13 +72,20 @@ import time
 
 from calltimeout import run
 
-# Process mode really stops the work: the child is terminated, not left running.
-print(run(time.sleep, 0.5, args=(60,), mode="process", default="stopped"))  # stopped
-print(run(math.factorial, 30.0, args=(20,), mode="process"))  # 2432902008176640000
+
+def main() -> None:
+    # Process mode really stops the work: the child is terminated, not left running.
+    print(run(time.sleep, 0.5, args=(60,), mode="process", default="stopped"))  # stopped
+    print(run(math.factorial, 30.0, args=(20,), mode="process"))  # 2432902008176640000
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 Process mode needs importable targets and, in a script, the
-`if __name__ == "__main__":` guard that `multiprocessing` asks for. The
+`if __name__ == "__main__":` guard that `multiprocessing` asks for, as above: under the
+spawn and forkserver start methods the child imports the script again. The
 [GUIDE](https://github.com/JaviLianes8/calltimeout/blob/main/GUIDE.md) explains each mode
 in depth, every error and its cause, nesting, and use from async code.
 
@@ -92,7 +99,9 @@ in depth, every error and its cause, nesting, and use from async code.
 | `CallCrashed` | A `RuntimeError` raised in process mode when the child dies without a result; `.exitcode` |
 | `Mode` | `Literal["thread", "process", "signal"]`, for annotating your own wrappers |
 
-Bad arguments raise `TypeError` or `ValueError` before anything starts. The
+Bad arguments raise `TypeError` or `ValueError` before anything starts, and in process
+mode a call that cannot be pickled raises `pickle.PicklingError`, also before any
+process starts. The
 [CHANGELOG](https://github.com/JaviLianes8/calltimeout/blob/main/CHANGELOG.md) lists what
 changed in each release; from 1.0.0 on the API follows Semantic Versioning.
 

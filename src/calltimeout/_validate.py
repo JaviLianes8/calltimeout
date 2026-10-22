@@ -41,11 +41,20 @@ def check_timeout(timeout: object) -> float:
     return seconds
 
 
+def _is_coroutine_function(fn: object) -> bool:
+    try:
+        return inspect.iscoroutinefunction(fn)
+    except Exception:
+        # Its own __getattr__ raised while inspect looked around: the call itself may
+        # still work, and the object's error is no argument error of ours.
+        return False
+
+
 def check_call(fn: object, args: object, kwargs: object) -> None:
     """Reject arguments the call could never run with, before anything is started."""
     if not callable(fn):
         raise TypeError(f"fn must be callable, not {type_name(fn)}")
-    if inspect.iscoroutinefunction(fn):
+    if _is_coroutine_function(fn):
         # Named, not repr'd: the repr of a partial would quote its bound arguments.
         raise TypeError(f"{call_name(fn)} is a coroutine function: {_ASYNC_HINT}")
     if not isinstance(args, tuple):
