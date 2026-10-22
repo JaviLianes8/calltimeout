@@ -74,6 +74,7 @@ def run_with_signal(
     outer_delay, outer_interval = signal.getitimer(signal.ITIMER_REAL)
     outer_due = start + outer_delay if outer_delay > 0 else None
     fired = False
+    active = True
     raised = CallTimeout(timeout)
 
     def arm(now: float) -> None:
@@ -82,6 +83,8 @@ def run_with_signal(
 
     def expire(signum: int, frame: FrameType | None) -> None:
         nonlocal fired, outer_due, outer_interval
+        if not active:
+            return  # the call is over; the outer timer is restored below
         now = time.monotonic()
         if now >= deadline:
             fired = True
@@ -106,18 +109,16 @@ def run_with_signal(
         raise RuntimeError("SIGALRM has a handler set outside Python that could not be restored")
     previous = signal.signal(signal.SIGALRM, expire)
     try:
-        arm(start)
         try:
+            arm(start)
             value = fn(*args, **kwargs)
-        except BaseException as exc:
-            if fired and _caused_by(exc, raised):
-                raise Expired from exc
-            raise
         finally:
+            # Inert first, then disarmed: a late tick can no longer re-arm the timer.
+            active = False
             signal.setitimer(signal.ITIMER_REAL, 0)
-    except CallTimeout as exc:
-        # The alarm can land after the call returned but before the timer was disarmed.
-        if exc is raised:
+    except BaseException as exc:
+        # Also covers the alarm landing after fn returned but before the disarm.
+        if fired and _caused_by(exc, raised):
             raise Expired from exc
         raise
     finally:

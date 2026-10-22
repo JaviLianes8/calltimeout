@@ -68,9 +68,11 @@ def test_a_huge_integer_timeout_is_a_value_error() -> None:
         run(_targets.echo, 10**400, args=(1,))
 
 
-def test_the_decorator_rejects_an_unhashable_mode_like_run() -> None:
-    with pytest.raises(ValueError, match="unknown mode"):
+def test_the_decorator_rejects_a_mode_that_is_not_a_str_like_run() -> None:
+    with pytest.raises(TypeError, match="mode must be a str, not list"):
         with_timeout(1.0, mode=["thread"])  # type: ignore[call-overload]
+    with pytest.raises(TypeError, match="mode must be a str, not list"):
+        run(_targets.echo, 1.0, args=(1,), mode=["thread"])  # type: ignore[call-overload]
 
 
 def test_kwargs_must_be_a_mapping() -> None:

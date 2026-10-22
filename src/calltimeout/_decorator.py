@@ -49,25 +49,41 @@ def with_timeout(
 def with_timeout(
     timeout: float, *, mode: Mode = "thread", default: D | _Unset = UNSET
 ) -> Callable[[Callable[P, T]], Callable[P, T | D]]:
-    """Decorate a function so every call runs under run(fn, timeout, mode=...).
+    """Decorate a function so every call runs as ``run(fn, timeout, mode=mode)``.
 
-    The decorated function keeps its parameters for type checkers. With default, a
-    timed-out call returns it instead of raising. In process mode, under the spawn and
-    forkserver start methods, the child imports the function by name, so the decorated
-    function or the original must be reachable under its own module and name.
+    The decorated function keeps its parameters for type checkers, so every call is
+    checked, and its result type becomes ``T | D`` when a default is given. Settings are
+    checked when the decorator is made and the function when it is applied, with the
+    errors of ``run``. In process mode under the spawn and forkserver start methods the
+    child imports the function by name, so the decorated function or the original must
+    be reachable under its own module and name.
+
+    >>> import time
+    >>> from calltimeout import with_timeout
+    >>> @with_timeout(2.0)
+    ... def add(left: int, right: int) -> int:
+    ...     return left + right
+    >>> add(2, 3)
+    5
+    >>> @with_timeout(0.05, default=None)
+    ... def lookup(key: str) -> str:
+    ...     time.sleep(10)
+    ...     return key
+    >>> print(lookup("id"))
+    None
     """
     check_timeout(timeout)
-    check_mode(mode, RUNNERS)
+    name = check_mode(mode, RUNNERS)
 
     def decorate(fn: Callable[P, T]) -> Callable[P, T | D]:
         check_call(fn, (), None)
 
         @functools.wraps(fn)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | D:
-            if mode == "process" and claim_child_target(wrapper):
+            if name == "process" and claim_child_target(wrapper):
                 # Already inside the child started for this call: run the body.
                 return fn(*args, **kwargs)
-            target = _process_target(wrapper, fn) if mode == "process" else fn
+            target = _process_target(wrapper, fn) if name == "process" else fn
             if isinstance(default, _Unset):
                 return run(target, timeout, args=args, kwargs=kwargs, mode=mode)
             return run(target, timeout, args=args, kwargs=kwargs, mode=mode, default=default)

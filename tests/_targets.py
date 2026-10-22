@@ -149,3 +149,16 @@ def child_only_result() -> object:
 
 
 assigned_pid = with_timeout(30.0, mode="process")(pid)
+
+
+class SlowToPickle:
+    """An argument whose pickling takes a while, to spend the budget before the start."""
+
+    def __reduce__(self) -> tuple[object, tuple[str]]:
+        time.sleep(0.6)
+        return (str, ("pickled",))
+
+
+def touch_with(marker: str, extra: object) -> object:
+    touch(marker)
+    return extra

@@ -42,12 +42,15 @@ class _Reader(Protocol):
 
 
 def _child(call: object, conn: Connection) -> None:
-    if isinstance(call, bytes):
-        call = pickle.loads(call)
-    fn, args, kwargs = cast(tuple[Callable[..., object], tuple[object, ...], dict[str, Any]], call)
-    _targets.append(fn)
     try:
         try:
+            # Loading can fail here (spawn and forkserver import fn by name): report it.
+            if isinstance(call, bytes):
+                call = pickle.loads(call)
+            fn, args, kwargs = cast(
+                tuple[Callable[..., object], tuple[object, ...], dict[str, Any]], call
+            )
+            _targets.append(fn)
             data = pack_result(reject_coroutine(fn(*args, **kwargs)))
         except BaseException as exc:
             data = pack_error(exc)
@@ -56,9 +59,8 @@ def _child(call: object, conn: Connection) -> None:
         conn.close()
 
 
-def _await(reader: Any, process: BaseProcess, timeout: float) -> list[object]:
+def _await(reader: Any, process: BaseProcess, deadline: float) -> list[object]:
     """Wait for a result or the child's exit, whichever comes first; [] on overrun."""
-    deadline = time.monotonic() + timeout
     while True:
         left = deadline - time.monotonic()
         if left <= 0:
@@ -98,7 +100,8 @@ def _receive(reader: _Reader, ready: Sequence[object]) -> bytes | None:
     if reader in ready or reader.poll():
         try:
             return reader.recv_bytes()
-        except EOFError:
+        except (EOFError, OSError):
+            # Closed without a message, or cut short because the child died writing it.
             return None
     return None
 
@@ -113,10 +116,14 @@ def run_in_process(
 
     Unlike thread mode this truly stops the work on timeout, but fn, its arguments
     and its result must be picklable so they can cross the process boundary. A child
-    that exits without a result raises CallCrashed as soon as it is gone.
+    that exits without a result raises CallCrashed as soon as it is gone. The budget
+    covers pickling the call and starting the child.
     """
+    deadline = time.monotonic() + timeout
     ctx = multiprocessing.get_context()
     call = prepickle(ctx.get_start_method(), (fn, args, dict(kwargs)))
+    if time.monotonic() >= deadline:
+        raise Expired  # pickling the call used up the budget: never start it
     reader, writer = ctx.Pipe(duplex=False)
     process = ctx.Process(target=_child, args=(call, writer), name=thread_name(fn))
     started = finished = False
@@ -124,12 +131,14 @@ def run_in_process(
         process.start()
         started = True
         writer.close()
-        ready = _await(reader, process, timeout)
+        ready = _await(reader, process, deadline)
         if not ready:
             raise Expired
         data = _receive(reader, ready)
         if data is None:
-            process.join()
+            # No result will come: report the exit, but never wait past the deadline.
+            if not _exits_within(process, deadline - time.monotonic()):
+                raise Expired
             raise CallCrashed(process.exitcode)
         finished = True
     finally:

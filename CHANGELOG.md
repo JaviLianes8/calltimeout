@@ -6,6 +6,39 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-22
+
+The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed` and
+`Mode`, with their parameter names, defaults and exception types, follow Semantic
+Versioning from this release on. calltimeout was never published before 1.0.0; the
+changes below are against 0.2.0 as tagged in the repository.
+
+### Changed
+
+- A `mode` that is not a `str` raises `TypeError` (it raised `ValueError`); an unknown
+  mode name still raises `ValueError`, and the message lists the three valid names. A
+  `str` subclass is read as the plain name.
+- `CallTimeout` and `CallCrashed` are shown and pickled as `calltimeout.CallTimeout` and
+  `calltimeout.CallCrashed`, so a pickle never names a private module, and they keep
+  extra attributes (such as notes) through pickle and copy.
+- Error messages are bounded: a quoted value or name is cut after 60 characters, a
+  quoted exception after 300, and an integer of more than 64 bits is described by its
+  size instead of printed.
+- Process mode: the budget also covers pickling the call and starting the child, and a
+  call whose pickling used it up is never started. A child that cannot load the call
+  (a function the child cannot import under spawn or forkserver) reports that error
+  with its traceback instead of a crash with exit code 1. A child that dies while
+  sending its result raises `CallCrashed`, and waiting for a crashed child's exit code
+  never runs past the budget. A result that cannot be pickled raises
+  `pickle.PicklingError` with the child's traceback of the failure.
+- Signal mode: a timer tick that lands after the call has finished can no longer re-arm
+  the timer.
+- Thread mode measures the budget from the start of `run`, including starting the thread.
+- The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
+  only exists from Python 3.11.
+- Every public name has a docstring with an example that runs as a doctest.
+- `Development Status :: 5 - Production/Stable`.
+
 ## [0.2.0]
 
 ### Added
