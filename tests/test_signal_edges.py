@@ -49,7 +49,7 @@ def test_a_tick_pending_at_the_disarm_does_not_arm_the_timer_again(
             signal.raise_signal(signal.SIGALRM)  # a tick that was already on its way
         return previous
 
-    monkeypatch.setattr(_signal.signal, "setitimer", setitimer)
+    monkeypatch.setattr(signal, "setitimer", setitimer)
     assert run(_targets.echo, 30.0, args=(1,), mode="signal") == 1
     assert sent == [True]
     assert real(signal.ITIMER_REAL, 0) == (0.0, 0.0)
