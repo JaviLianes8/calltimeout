@@ -1,19 +1,206 @@
 # calltimeout 1.0.0 certification report
 
 The 1.0.0 certification bar (19 items) applied to calltimeout. No release is on PyPI
-(`https://pypi.org/pypi/calltimeout/json` answered 404 on 2026-10-18), so there is no
-upgrade path to test; the changes below are listed against 0.2.0, the last tagged state
-of `main` (9b6975c).
+(`https://pypi.org/pypi/calltimeout/json` answered 404 on 2026-10-18 and again on
+2026-10-22), so there is no upgrade path to test; the changes below are listed against
+0.2.0, the last tagged state of `main` (9b6975c).
 
 Progress:
 - [x] Branch `release/1.0.0` created from `main` (9b6975c, 0.2.0)
-- [ ] Baseline gates on 0.2.0
-- [ ] API review and 1.0.0 changes (item 1)
-- [ ] Errors, typing, docstrings and doctests (items 2 to 5)
-- [ ] Ground truth: documentation fetched live, real program output (item 7)
-- [ ] Contract, fuzz and author mutation round (items 6, 9, 18)
-- [ ] Docs: README, GUIDE, CHANGELOG (items 11, 12)
-- [ ] Packaging, e2e, every Python (items 8, 10, 13, 14)
-- [ ] Gates (item 15)
-- [ ] PR and trace guard
+- [x] Baseline gates on 0.2.0
+- [x] API review and 1.0.0 changes (item 1)
+- [x] Errors, typing, docstrings and doctests (items 2 to 5)
+- [x] Ground truth: documentation fetched live, pebble run live (item 7)
+- [x] Contract, fuzz and author mutation round (items 6, 9, 18)
+- [x] Docs: README, GUIDE, CHANGELOG (items 11, 12)
+- [x] Packaging, e2e, every Python (items 8, 10, 13, 14)
+- [x] Gates (item 15)
+- [x] PR and trace guard
 - [ ] Five QA lenses (item 19) and independent reviewer (item 16)
+
+## Scorecard
+
+| # | Item | Result |
+| --- | --- | --- |
+| 1 | Public API reviewed for stability | PASS: the five names of 0.2.0 kept with their parameter names and defaults, pinned by `tests/test_contract_api.py`; every behaviour change in the CHANGELOG and the GUIDE |
+| 2 | `__all__` exact, no private imports in docs | PASS: `CallCrashed`, `CallTimeout`, `Mode`, `run`, `with_timeout`; `tests/test_contract.py` |
+| 3 | Docstrings with runnable examples, doctests | PASS: every public name has a doctest (5, also run from the installed wheel); README and GUIDE examples run as tests with their printed output checked |
+| 4 | Typed end to end | PASS: `mypy --strict src tests` for the Windows, Linux and macOS platforms; `py.typed` shipped; a consumer script type-checked against the installed wheel |
+| 5 | Typed, documented, bounded errors | PASS: `CallTimeout` (`TimeoutError`), `CallCrashed` (`RuntimeError`), `TypeError` or `ValueError` before the call starts; quoted values cut at 60 characters, exceptions at 300, huge integers described by size |
+| 6 | Contract tests of every public name | PASS |
+| 7 | Real ground truth | PASS: 8 CPython and PEP documents fetched with a hash manifest, each fact checked against the running interpreter; pebble 5.2.3 run live as a second implementation |
+| 8 | Real e2e from the wheel | PASS: wheel and sdist built, inspected, installed in throwaway venvs and used from an empty folder; no CLI; nothing on PyPI to upgrade from |
+| 9 | Seeded fuzz, no crash, hang or blowup | PASS |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2 free-threaded (Windows) and 3.14.4 (Linux, three start methods); 3.8 and 3.9 are below `requires-python` |
+| 11 | README and `twine check` | PASS: `twine check --strict` in the e2e tests, absolute links, problem, why versus five alternatives checked on PyPI on 2026-10-22, certified badge |
+| 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-10-22` |
+| 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
+| 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
+| 15 | Gates each exit 0 | PASS: see Gates |
+| 16 | Independent reviewer | pending |
+| 17 | PR and trace guard | PR from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
+| 18 | Contracts bite (mutations) | PASS: 58 author mutants, 57 killed; M36 killed under fork and spawn and unreachable under forkserver |
+| 19 | Five independent QA lenses | pending |
+
+## Baseline on 0.2.0 (before any change)
+
+Fresh clone of `main` at 9b6975c, CPython 3.13: `ruff format --check .`, `ruff check .`
+and `mypy --strict src tests` exit 0; `pytest` 86 passed, 5 skipped (POSIX-only and the
+opt-in e2e tests). No doctests existed.
+
+## API review (item 1)
+
+Kept: `run(fn, timeout, *, args=(), kwargs=None, mode="thread", default=...)`,
+`with_timeout(timeout, *, mode="thread", default=...)`, `CallTimeout` (`.timeout`),
+`CallCrashed` (`.exitcode`) and `Mode`, with the same parameter names and defaults as
+0.2.0. Changed, all listed in the CHANGELOG 1.0.0 section: a non-`str` mode raises
+`TypeError`; the exceptions show and pickle as `calltimeout.<Name>` and keep extra
+attributes and notes; a real number whose `float` conversion fails raises `TypeError`;
+bounded messages; process mode counts pickling and the child's start against the budget
+and never starts a call whose pickling used it up; a child that cannot load the call
+reports the real error; a child that dies while sending raises `CallCrashed`; an
+unpicklable result raises `pickle.PicklingError` with the child's traceback; a late
+SIGALRM tick can no longer re-arm the timer; thread mode measures from the start of
+`run`; the coroutine hint names `asyncio.wait_for()`. `kwargs` is copied into a plain
+`dict` in the caller before the call starts (documented in the GUIDE, now pinned).
+
+## Ground truth (item 7)
+
+Fetched by `scripts/fetch_upstream.py` into the ignored `tests/upstream` folder on
+2026-10-18 and fetched again on 2026-10-22 on two machines, sha256 matching
+`tests/upstream/MANIFEST.json` each time; nothing fetched is committed or shipped.
+
+- CPython documentation sources at tag v3.14.8 (`threading`, `signal`,
+  `multiprocessing`, `asyncio-task`, `inspect`, `pickle`) and `asyncio-task` at v3.10.22,
+  `https://raw.githubusercontent.com/python/cpython/<tag>/Doc/library/<name>.rst`; PEP 475
+  at peps commit 6068058. `tests/test_upstream_threads.py` and
+  `tests/test_upstream_processes.py` find each sentence in the fetched text, show the
+  running interpreter behaves that way (join returning None, `TIMEOUT_MAX`, daemon
+  threads, the context copy of `asyncio.to_thread`, negative exit codes after a signal,
+  `terminate()` leaving descendants, main-thread-only handlers, a handler set outside
+  Python read as `None`, a C calculation interrupted only once it returns, a raising
+  handler stopping a blocking system call, the main-module guard), then that calltimeout
+  follows from it.
+- Real program output: pebble 5.2.3 (`https://pypi.org/project/pebble/`), installed in
+  each run, executes the same seeded calls in its own process pool
+  (`tests/test_oracles.py`): results, exception types and arguments, crash exit codes
+  and timeouts agree. The one difference found (a worker that exits with code 0 is a crash
+  here and a timeout in a pebble pool) is asserted precisely.
+- The plain call `fn(*args, **kwargs)` is the oracle for every mode in
+  `tests/test_fuzz_calls.py`.
+
+## Fuzz and hostile input (item 9)
+
+`tests/test_fuzz_arguments.py`: three seeds, each with 1,500 random timeouts (floats,
+integers up to 600 digits, fractions, subnormal to huge floats, numeric-looking strings,
+containers) after fixed edges (bools, NaN, infinities, `TIMEOUT_MAX` and just above it,
+`Decimal`, 10**400), judged against the documented rules written independently of the
+code, and 1,000 mode strings; hostile objects whose every method raises, and type names
+of 100,000 characters, get a typed error of at most 300 characters; 25,000 and 100,000
+keyword arguments are checked in linear time. `tests/test_fuzz_calls.py`: seeded builtin
+calls with random, often invalid, arguments through thread, process and (POSIX) signal
+mode give exactly the direct call's value or exception. `tests/test_hardening.py`:
+messages bounded for huge integers, long type and mode names, unpicklable results and
+exceptions that cannot be rebuilt.
+
+## Author mutation round (item 18)
+
+58 mutants (`scripts/mutants.json`) over every module, each applied alone by
+`scripts/mutate.py` to a fresh clone of the pushed branch, the full suite (fetched
+documents and pebble present) run with `-x` and a 300 s per-test limit; every process a
+mutant leaves behind, orphans included, is ended before the next one. Windows mutants ran
+on another machine (CPython 3.14) at 6656871; the POSIX ones (marked in the JSON) under
+WSL Ubuntu, CPython 3.14.4. Eight survived the first pass (M23, M26, M31, M34, M47, M48,
+M56, M57); the missing contracts were added in cd9e60e and a4d7354 and all eight were
+killed at a4d7354. M33 to M36 and M47 to M58 were run again at 4106b53 under forkserver.
+M36 removes the `is_alive()` fallback for a grandchild that inherits the result pipe and,
+under fork and spawn, the sentinel: killed under both. Under forkserver the sentinel is
+not inherited, the child's exit is seen through it and the branch is never reached, so
+the mutant is equivalent there.
+
+| Id | Mutation | File | Result | Caught by |
+| --- | --- | --- | --- | --- |
+| M01 | a bool timeout accepted | `_validate.py` | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M02 | negative check off by one | `_validate.py` | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M03 | TIMEOUT_MAX itself refused | `_validate.py` | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M04 | NaN check dropped | `_validate.py` | killed | `test_validation.py::test_the_decorator_rejects_bad_settings_when_applied[<lambda>1]` |
+| M05 | -0.0 kept negative | `_validate.py` | killed | `test_regressions.py::test_the_timeout_is_reported_as_the_validated_float` |
+| M06 | coroutine function check dropped | `_validate.py` | killed | `test_upstream_threads.py::test_a_partial_of_a_coroutine_function_is_refused_without_its_arguments` |
+| M07 | a list accepted as args | `_validate.py` | killed | `test_validation.py::test_rejects_args_that_are_not_a_tuple` |
+| M08 | kwargs key check dropped | `_validate.py` | killed | `test_validation.py::test_rejects_kwargs_with_keys_that_are_not_strings` |
+| M09 | str subclass mode used as given | `_validate.py` | killed | `test_hardening.py::test_a_str_subclass_mode_is_read_as_the_plain_name` |
+| M10 | wrong error type for a non-str mode | `_validate.py` | killed | `test_fuzz_arguments.py::test_only_the_three_mode_names_are_accepted[1]` |
+| M11 | coroutine result not closed | `_validate.py` | killed | `test_validation.py::test_rejects_a_coroutine_returned_by_the_call[thread]` |
+| M12 | float conversion failure leaks | `_validate.py` | killed | `test_fuzz_arguments.py::test_hostile_arguments_still_get_a_short_typed_error` |
+| M13 | cut keeps one character more | `_text.py` | killed | `test_hardening.py::test_an_unknown_mode_is_quoted_briefly_and_the_names_are_listed` |
+| M14 | huge integer boundary off by one | `_text.py` | killed | `test_hardening.py::test_a_huge_integer_is_described_not_printed` |
+| M15 | call name fallback lost | `_text.py` | killed | `test_upstream_threads.py::test_a_partial_of_a_coroutine_function_is_refused_without_its_arguments` |
+| M16 | CallTimeout pickles without its state | `_errors.py` | killed | `test_hardening.py::test_extra_attributes_and_notes_survive_pickle[error0]` |
+| M17 | CallCrashed prints a huge exit code | `_errors.py` | killed | `test_hardening.py::test_a_huge_integer_is_described_not_printed` |
+| M18 | CallTimeout keeps its private module | `__init__.py` | killed | `test_contract_api.py::test_public_objects_live_under_the_package_name` |
+| M19 | zero budget starts the call | `_api.py` | killed | `test_fuzz_arguments.py::test_only_the_three_mode_names_are_accepted[1]` |
+| M20 | default and raise swapped | `_api.py` | killed | `_api.py::calltimeout._api.run` (doctest) |
+| M21 | timeout reported as given | `_api.py` | killed | `test_regressions.py::test_the_timeout_is_reported_as_the_validated_float` |
+| M22 | signal mode check after the zero shortcut | `_api.py` | killed | `test_signal_windows.py::test_the_platform_error_comes_before_the_zero_budget_shortcut` |
+| M23 | kwargs passed through uncopied | `_api.py` | survived, then killed | `test_contract_edges.py::test_kwargs_are_read_once_in_the_caller_before_the_call_starts[thread]` |
+| M24 | context variables not copied | `_thread.py` | killed | `test_thread.py::test_the_call_sees_the_callers_context_variables` |
+| M25 | worker is not a daemon | `_thread.py` | killed | `test_thread.py::test_a_lingering_call_runs_in_a_named_daemon_thread` |
+| M26 | thread wait twice the budget | `_thread.py` | survived, then killed | `test_contract_edges.py::test_an_overrun_ends_after_the_budget_and_well_before_twice_it[thread]` |
+| M27 | coroutine result returned | `_thread.py` | killed | `test_validation.py::test_rejects_a_coroutine_returned_by_the_call[thread]` |
+| M28 | thread name loses the call | `_thread.py` | killed | `test_thread.py::test_a_lingering_call_runs_in_a_named_daemon_thread` |
+| M29 | no grace period for a finished child | `_process.py` | killed | `test_docs.py::test_the_grace_period_in_the_docs_matches_the_code` |
+| M30 | a broken pipe escapes as OSError | `_process.py` | killed | `test_hardening.py::test_a_reader_cut_short_counts_as_no_result` |
+| M31 | pickling past the budget still starts | `_process.py` | survived, then killed | `test_contract_edges.py::test_a_call_whose_pickling_spends_the_budget_starts_no_process` |
+| M32 | a lost child is waited for without limit | `_process.py` | killed | `test_hardening.py::test_waiting_for_a_lost_childs_exit_stays_within_the_budget` |
+| M33 | a child ignoring SIGTERM is never killed | `_process.py` | killed (POSIX) | `test_process.py::test_a_child_that_ignores_sigterm_is_killed` |
+| M34 | the child target is not claimed once | `_process.py` | survived, then killed | `test_contract_edges.py::test_a_decorated_process_function_called_inside_its_own_child_gets_a_new_child` |
+| M35 | the child does not mark its target | `_process.py` | killed | `test_contract_edges.py::test_a_decorated_process_function_called_inside_its_own_child_gets_a_new_child` |
+| M36 | a crash behind a grandchild goes unseen | `_process.py` | killed under fork and spawn; equivalent under forkserver | `test_process.py::test_a_crash_is_seen_even_while_a_grandchild_holds_the_pipe` |
+| M37 | a crash reports the wrong exit code | `_process.py` | killed | `test_docs.py::test_every_example_runs_and_prints_what_its_comments_say[GUIDE.md-5]` |
+| M38 | a load failure in the child is a crash | `_process.py` | killed | `_api.py::calltimeout._api.run` (doctest) |
+| M39 | an exception that cannot be rebuilt is sent | `_wire.py` | killed | `test_process.py::test_an_exception_that_cannot_be_rebuilt_arrives_as_a_stand_in` |
+| M40 | the child traceback is not chained | `_wire.py` | killed | `test_docs.py::test_every_example_runs_and_prints_what_its_comments_say[GUIDE.md-5]` |
+| M41 | detail cut too short | `_wire.py` | killed | `test_hardening.py::test_an_unpicklable_result_carries_the_childs_traceback_of_the_failure` |
+| M42 | a result pickling failure is not chained | `_wire.py` | killed | `test_hardening.py::test_an_unpicklable_result_carries_the_childs_traceback_of_the_failure` |
+| M43 | the wrapper is always sent to the child | `_decorator.py` | killed | `test_regressions.py::test_the_decorator_works_when_assigned_to_another_name` |
+| M44 | metadata of the function not kept | `_decorator.py` | killed | `test_decorator.py::test_metadata_of_the_wrapped_function_is_kept` |
+| M45 | the decorator ignores its default | `_decorator.py` | killed | `_decorator.py::calltimeout._decorator.with_timeout` (doctest) |
+| M46 | the decorator does not check the function | `_decorator.py` | killed | `test_validation.py::test_the_decorator_rejects_a_coroutine_function` |
+| M47 | re-arm delay of zero disarms | `_signal.py` | survived, then killed | `test_signal_edges.py::test_a_handler_that_overruns_the_deadline_still_ends_the_call` |
+| M48 | a late tick re-arms the timer | `_signal.py` | survived, then killed | `test_signal_edges.py::test_a_tick_pending_at_the_disarm_does_not_arm_the_timer_again` |
+| M49 | any exception after the alarm counts as the timeout | `_signal.py` | killed | `test_signal_posix.py::test_keyboard_interrupt_after_a_swallowed_timeout_propagates` |
+| M50 | KeyboardInterrupt read as the timeout | `_signal.py` | killed | `test_signal_posix.py::test_keyboard_interrupt_after_a_swallowed_timeout_propagates` |
+| M51 | previous handler not restored | `_signal.py` | killed | `test_signal_posix.py::test_returns_the_default_and_restores_the_previous_handler` |
+| M52 | outer timer not restored | `_signal.py` | killed | `test_signal_posix.py::test_an_enclosing_timer_keeps_its_schedule` |
+| M53 | a swallowed timeout returns normally | `_signal.py` | killed | `test_signal_posix.py::test_a_swallowed_timeout_still_ends_in_call_timeout` |
+| M54 | signal mode allowed off the main thread | `_signal.py` | killed | `test_signal_posix.py::test_refuses_to_run_outside_the_main_thread` |
+| M55 | a periodic outer timer becomes one-shot | `_signal.py` | killed | `test_signal_posix.py::test_a_periodic_outer_timer_is_not_starved` |
+| M56 | an early wake is not re-armed | `_signal.py` | survived, then killed | `test_signal_edges.py::test_a_tick_before_the_deadline_by_the_clock_arms_the_rest` |
+| M57 | outer tick passed on twice | `_signal.py` | survived, then killed | `test_signal_edges.py::test_a_stray_signal_once_the_outer_timer_is_due_passes_it_on_once` |
+| M58 | handler set outside Python accepted | `_signal.py` | killed | `test_signal_posix.py::test_a_handler_set_outside_python_is_refused` |
+
+## Packaging, e2e and Pythons (items 8, 10, 13, 14)
+
+- Every interpreter on this PC from `requires-python` up, at 5bcc60e: the wheel and sdist
+  built once from a fresh clone (the wheel byte-identical to an earlier build), the wheel
+  installed in a fresh venv per interpreter and the sdist's own suite run with `src`
+  removed, `CALLTIMEOUT_E2E=1` and pebble 5.2.3, plus the doctests of the installed
+  package: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2 free-threaded each
+  167 passed, 10 skipped (POSIX only), doctests 5 passed. The one later commit only
+  changes how a POSIX test patches `setitimer`.
+- The e2e tests build the wheel and sdist, check their contents (package, `py.typed`,
+  LICENSE, metadata; the sdist with sources, tests, docs and the manifest, without fetched
+  documents or certification notes), run `twine check --strict` on both, install each in
+  a throwaway venv, drive the package from an empty folder with `-I`, and type-check a
+  consumer script with `mypy --strict` against the installed wheel. There is no CLI.
+- POSIX: WSL Ubuntu, CPython 3.14.4, at 4106b53: format, lint and `mypy --strict src tests`
+  exit 0; the suite under forkserver 194 passed, 9 skipped; fork 190 passed, 13 skipped;
+  spawn 194 passed, 9 skipped (Windows-only, fork-inapplicable and opt-in e2e tests).
+
+## Gates (item 15)
+
+At 5bcc60e on another machine from a fresh clone (CPython 3.14, fetched documents,
+pebble, `CALLTIMEOUT_E2E=1`), each on its own: `ruff format --check .`, `ruff check .`,
+`mypy --strict src`, `mypy --strict src tests` exit 0, and `pytest` 171 passed, 13
+skipped (POSIX only), exit 0. At 4106b53 the static gates exit 0 again on this PC
+(mypy for the Windows, Linux and macOS platforms) and the full gate under WSL (above).
