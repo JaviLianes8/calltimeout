@@ -162,3 +162,7 @@ class SlowToPickle:
 def touch_with(marker: str, extra: object) -> object:
     touch(marker)
     return extra
+
+
+def kill_self(signum: int) -> None:
+    os.kill(os.getpid(), signum)

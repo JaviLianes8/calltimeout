@@ -60,7 +60,7 @@ def test_an_unknown_mode_is_quoted_briefly_and_the_names_are_listed() -> None:
 def test_a_long_type_name_is_cut_in_messages() -> None:
     long_type = type("T" * 500, (), {})
     with pytest.raises(TypeError) as info:
-        run(_targets.echo, long_type())  # type: ignore[call-overload]
+        run(_targets.echo, long_type())
     assert str(info.value) == f"timeout must be a number of seconds, not {'T' * 60}..."
 
 
@@ -82,7 +82,7 @@ def test_the_coroutine_hint_names_a_tool_every_supported_python_has() -> None:
         return None
 
     with pytest.raises(TypeError, match=r"asyncio\.wait_for\(\)"):
-        run(job, 1.0)
+        _ = run(job, 1.0)
 
 
 @needs_pickling
