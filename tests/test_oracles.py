@@ -7,6 +7,7 @@ seeded calls both must agree. Skips when pebble is not installed.
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import random
 import time
@@ -31,7 +32,8 @@ def pool() -> Iterator[object]:
 def _outcome(call: Callable[[], object]) -> tuple[str, object]:
     try:
         return ("value", call())
-    except (CallTimeout, TimeoutError):
+    except (CallTimeout, TimeoutError, concurrent.futures.TimeoutError):
+        # Python 3.10 still has a separate futures TimeoutError, which pebble raises there.
         return ("timeout", None)
     except CallCrashed as exc:
         return ("crash", exc.exitcode)
