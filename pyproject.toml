@@ -63,3 +63,5 @@ testpaths = ["src", "tests"]
 pythonpath = ["src"]
 addopts = "-q --doctest-modules"
 timeout = 300
+# The signal method would arm SIGALRM around every test, under the timers signal mode tests.
+timeout_method = "thread"
