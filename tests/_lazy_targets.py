@@ -1,6 +1,10 @@
-"""A module whose lazy __getattr__ raises ImportError for the plain names it lacks."""
+"""A module with lazy attributes whose loading raises ImportError instead of AttributeError."""
 
 from __future__ import annotations
+
+# Names this module would load on first use; here loading them fails. The decorator looks
+# the wrapper up by its qualified name, which starts with with_timeout.
+_LAZY = frozenset({"with_timeout", "helpers"})
 
 
 class Double:
@@ -11,6 +15,6 @@ class Double:
 
 
 def __getattr__(name: str) -> object:
-    if name.startswith("__"):
-        raise AttributeError(name)  # tools probing dunders (pytest, inspect) expect this
-    raise ImportError(f"lazy attribute {name} is not available")
+    if name in _LAZY:
+        raise ImportError(f"lazy attribute {name} is not available")
+    raise AttributeError(name)
