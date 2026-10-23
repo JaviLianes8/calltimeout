@@ -29,10 +29,10 @@ class BadStr(Exception):
 
 
 class QualMeta(type):
-    """Its classes refuse to give their qualified name."""
+    """Its classes refuse to give their qualified name (doctest still reads their module)."""
 
     def __getattribute__(cls, name: str) -> object:
-        if name in ("__qualname__", "__module__"):
+        if name == "__qualname__":
             raise RuntimeError(f"{name} refused")
         return super().__getattribute__(name)
 
