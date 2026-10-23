@@ -38,15 +38,25 @@ on `main`.
 - Process mode: a call whose function or arguments cannot be pickled raises
   `pickle.PicklingError` before any process starts, chained from pickle's own error
   (which was raised as it was, a different type on each Python version). That error is
-  bounded in place: its text is cut after 300 characters, and only its first ten notes
-  are kept, each cut after 60 characters, followed by a count of the rest; one whose text
-  cannot be cut in place (a `__str__` of its own, `args` that cannot be set) is replaced
-  as the cause by a `RuntimeError` naming its type, bounded the same way. A call holding
-  objects that `multiprocessing` only pickles while a child starts (locks, queues, shared
-  values), any number of them, is first rehearsed as the start will pickle it, so one
-  whose contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same
-  way, and one that still fails when the start pickles it again (an object that pickles
-  only once) raises the same error, its child stopped before it runs anything. An
+  bounded: its text is cut after 300 characters, and only its first ten notes are kept,
+  each cut after 60 characters, followed by a count of the rest. The plain errors pickle
+  raises (`TypeError`, `ValueError`, `RuntimeError`, `pickle.PicklingError` and a few
+  more, exactly those types) are cut in place; any other (an argument's `__reduce__` can
+  raise a subclass, an error with a `__str__` of its own, a type that cannot be named) is
+  replaced as the cause by a `RuntimeError` naming its type and quoting its text, read
+  once. Errors chained to it are not kept, since they can quote the argument too. A call
+  holding objects that `multiprocessing` only pickles while a child starts (locks,
+  queues, shared values), any number of them, is first rehearsed as the start will
+  pickle it, so one whose contents cannot pickle (a `Value` guarded by a
+  `threading.Lock`) fails the same way, and one that still fails when the start pickles
+  it again (an object that pickles only once, a manager proxy whose pickling raises)
+  raises the same error, its child
+  stopped before it runs anything; a `KeyboardInterrupt` or `SystemExit` raised there is
+  raised as it is, once that child is stopped, instead of escaping half way through the
+  start, which on Windows could break later calls passing pipe ends. Under forkserver, a
+  call holding more than 248 descriptors (pipe ends, sockets, two per queue), more than
+  one message to the fork server carries, raises `pickle.PicklingError` before any
+  process starts instead of an undocumented `OSError` or `ValueError` from the start. An
   argument whose pickling raised `NotImplementedError` (a pool), `RecursionError` or a
   `RuntimeError` used to fail after the child was created, and on Windows it then broke
   the next process-mode call.
@@ -62,6 +72,10 @@ on `main`.
   manager proxy goes with its manager's authkey, as `multiprocessing` sends it: one of a
   manager with its own authkey failed in the child with `AuthenticationError` unless the
   call also held a lock. An argument whose `__class__` raises is sent as it pickles.
+- Process mode frees the child's handles as soon as the call ends. A call that raised
+  kept its child's process object, and its two descriptors or handles, alive in a
+  reference cycle until the next garbage collection, so a loop of failing calls could
+  run out of file descriptors (`OSError: [Errno 24] Too many open files`).
 - `with_timeout` in process mode sends a callable that pickles by value (a
   `functools.partial`, a callable object) as it is, as `run` does; it failed with
   `AttributeError` under spawn and forkserver.

@@ -100,8 +100,8 @@ in depth, every error and its cause, nesting, and use from async code.
 | `Mode` | `Literal["thread", "process", "signal"]`, for annotating your own wrappers |
 
 Bad arguments raise `TypeError` or `ValueError` before anything starts, and in process
-mode a call that cannot be pickled raises `pickle.PicklingError`, also before any
-process starts. The
+mode a call that cannot be pickled raises `pickle.PicklingError`, also before the call
+runs. The
 [CHANGELOG](https://github.com/JaviLianes8/calltimeout/blob/main/CHANGELOG.md) lists what
 changed in each release; from 1.0.0 on the API follows Semantic Versioning.
 

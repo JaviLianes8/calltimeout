@@ -57,17 +57,25 @@ The budget covers pickling the call and starting the child.
   Targets must be importable: define them at module level, and guard the entry point of
   a script with `if __name__ == "__main__":` as `multiprocessing` requires. Locks, queues,
   pipe ends, sockets, manager proxies and other `multiprocessing` objects can be passed as
-  arguments, any number of them. Pipe ends and sockets are handed over by the start itself
-  (on Windows, duplicated straight into the child), so none is left open in the caller,
-  even when the budget runs out before the child has loaded the call.
+  arguments, any number of them, except under forkserver (below). Pipe ends and sockets
+  are handed over by the start itself (on Windows, duplicated straight into the child), so
+  none is left open in the caller, even when the budget runs out before the child has
+  loaded the call.
+- A forkserver start sends every descriptor of the call to the fork server in one
+  message, which Linux caps. So under forkserver a call carries at most 248 descriptors:
+  one per pipe end or socket, two per queue, and one per block of the shared memory that
+  `Value` and `Array` objects live in (many share one). A call holding more raises
+  `pickle.PicklingError` before any process starts.
 - Under spawn and forkserver a call that cannot be pickled (a lambda, a thread lock, a
   pool, an argument nested too deeply) raises `pickle.PicklingError` before any process
   starts, chained from pickle's own error, whose type depends on the Python version.
   A call holding locks or queues is rehearsed as the start will pickle it, so one whose
   contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same way.
-  One that still fails when the start pickles it again (an object that pickles only once)
-  raises the same error, and the child created for it is stopped before it runs anything.
-  Under fork nothing is pickled on the way in.
+  One that still fails when the start pickles it again (an object that pickles only once,
+  a manager proxy whose pickling raises) raises the same error, and the child created for
+  it is stopped before it runs anything. A `KeyboardInterrupt` or other exception that is
+  not an `Exception`, raised there, is raised as it is once that child is stopped. Under
+  fork nothing is pickled on the way in.
 - The child process is named `calltimeout:<function>`, like the thread of thread mode.
 - A child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
   raises `CallCrashed` with its exit code as soon as it is gone, not a timeout, and never
@@ -184,7 +192,7 @@ print(lookup("id"))  # None
 | `ValueError` | `timeout` is negative, NaN or above `threading.TIMEOUT_MAX`, or `mode` is not one of the three names |
 | `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python |
 | `NotImplementedError` | Signal mode on Windows |
-| `pickle.PicklingError` | Process mode: `fn` or an argument cannot be sent to the child (raised before any process starts), or the result cannot be sent back |
+| `pickle.PicklingError` | Process mode: `fn` or an argument cannot be sent to the child (raised before the call runs: before any process starts, or once the child is stopped for a call that fails only when the start pickles it), a forkserver call holds more than 248 descriptors, or the result cannot be sent back |
 | `pickle.UnpicklingError` | Process mode: the result cannot be rebuilt in the caller |
 
 Both exceptions keep their attribute through pickle and copy, so they can cross process
@@ -192,9 +200,12 @@ boundaries themselves. Messages quote at most 60 characters of any value you pas
 a huge argument never ends up in a log. The error pickle raised, chained as the cause of
 a `PicklingError` for a call, can quote more: its text is cut after 300 characters, and
 only its first ten notes are kept, each cut after 60 characters, then a count of the rest.
-An error whose text cannot be cut in place (it has a `__str__` of its own, or `args` that
-cannot be set) is replaced, as the cause, by a `RuntimeError` naming its type, bounded the
-same way.
+That is done in place for the plain errors pickle raises (`TypeError`, `ValueError`,
+`RuntimeError`, `AttributeError`, `RecursionError`, `pickle.PicklingError` and a few
+more, exactly those types). Any other error, such as one an argument's own `__reduce__`
+raised (a subclass, one with a `__str__` of its own), is replaced as the cause by a
+`RuntimeError` naming its type and quoting its text, bounded the same way. Errors chained
+to the cause are not kept, since they can quote a value too.
 
 ## In async code
 
