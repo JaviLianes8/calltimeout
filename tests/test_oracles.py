@@ -43,10 +43,26 @@ def _outcome(call: Callable[[], object]) -> tuple[str, object]:
         return ("error", (type(exc), exc.args))
 
 
+# pebble's answer when its own pool broke (seen under load, also with no calltimeout call
+# running): no verdict on the call, so it is asked again in a fresh pool.
+POOL_ERROR = ("error", (RuntimeError, ("Unexpected error within the Pool",)))
+
+
+def _pebble(
+    pool: object, fn: Callable[..., object], args: tuple[object, ...], budget: float
+) -> object:
+    theirs = _outcome(lambda: pool.schedule(fn, args=args, timeout=budget).result())  # type: ignore[attr-defined]
+    for _ in range(3):
+        if theirs != POOL_ERROR:
+            break
+        with pebble.ProcessPool(max_workers=1, max_tasks=1) as fresh:
+            theirs = _outcome(lambda: fresh.schedule(fn, args=args, timeout=budget).result())
+    return theirs
+
+
 def _both(pool: object, fn: Callable[..., object], args: tuple[object, ...], budget: float) -> None:
     ours = _outcome(lambda: run(fn, budget, args=args, mode="process"))
-    theirs = _outcome(lambda: pool.schedule(fn, args=args, timeout=budget).result())  # type: ignore[attr-defined]
-    assert ours == theirs, (fn, args)
+    assert ours == _pebble(pool, fn, args, budget), (fn, args)
 
 
 def _cases(rng: random.Random) -> Iterator[tuple[Callable[..., object], tuple[object, ...]]]:
@@ -79,8 +95,7 @@ def test_an_exit_with_code_zero_is_a_crash_here_and_a_timeout_in_a_pebble_pool(
     started = time.monotonic()
     assert _outcome(lambda: run(os._exit, 3.0, args=(0,), mode="process")) == ("crash", 0)
     assert time.monotonic() - started < 3.0
-    theirs = _outcome(lambda: pool.schedule(os._exit, args=(0,), timeout=3.0).result())  # type: ignore[attr-defined]
-    assert theirs == ("timeout", None)
+    assert _pebble(pool, os._exit, (0,), 3.0) == ("timeout", None)
 
 
 def test_a_runaway_call_times_out_in_both(pool: object) -> None:
