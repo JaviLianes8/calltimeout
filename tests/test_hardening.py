@@ -104,7 +104,7 @@ def test_a_call_the_child_cannot_load_reports_the_real_error() -> None:
             run(module.hidden, 30.0, mode="process")
     finally:
         del sys.modules[module.__name__]
-    assert "pickle.loads" in str(info.value.__cause__)
+    assert "parcel.open()" in str(info.value.__cause__)  # failed while loading the call
 
 
 def test_an_unpicklable_result_carries_the_childs_traceback_of_the_failure() -> None:
