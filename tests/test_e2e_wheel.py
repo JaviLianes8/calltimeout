@@ -20,8 +20,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ["__init__", "_api", "_decorator", "_errors", "_handoff", "_parcel", "_process"]
-MODULES += ["_signal", "_text", "_thread", "_validate", "_wire"]
+MODULES = ["__init__", "_api", "_causes", "_decorator", "_errors", "_handoff", "_parcel"]
+MODULES += ["_process", "_signal", "_text", "_thread", "_validate", "_wire"]
 PACKAGE = {f"calltimeout/{name}.py" for name in MODULES} | {"calltimeout/py.typed"}
 
 pytestmark = pytest.mark.skipif(

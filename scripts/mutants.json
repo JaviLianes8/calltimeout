@@ -283,10 +283,10 @@
  },
  {
   "id": "M41",
-  "file": "src/calltimeout/_wire.py",
+  "file": "src/calltimeout/_causes.py",
   "what": "detail cut too short",
-  "old": "_DETAIL = 300",
-  "new": "_DETAIL = 3"
+  "old": "DETAIL = 300",
+  "new": "DETAIL = 3"
  },
  {
   "id": "M42",
