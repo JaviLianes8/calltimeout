@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import multiprocessing
-import pickle
 import time
 from collections.abc import Callable, Mapping, Sequence
 from multiprocessing.connection import Connection, wait
@@ -11,9 +10,10 @@ from multiprocessing.process import BaseProcess
 from typing import Any, Protocol, TypeVar, cast
 
 from ._errors import CallCrashed, Expired
+from ._parcel import Parcel, prepickle
 from ._thread import thread_name
 from ._validate import reject_coroutine
-from ._wire import pack_error, pack_result, prepickle, unpack
+from ._wire import pack_error, pack_result, unpack
 
 T = TypeVar("T")
 
@@ -41,15 +41,12 @@ class _Reader(Protocol):
     def recv_bytes(self) -> bytes: ...
 
 
-def _child(call: object, conn: Connection) -> None:
+def _child(parcel: Parcel) -> None:
+    conn = cast(Connection, parcel.conn)
     try:
         try:
             # Loading can fail here (spawn and forkserver import fn by name): report it.
-            if isinstance(call, bytes):
-                call = pickle.loads(call)
-            fn, args, kwargs = cast(
-                tuple[Callable[..., object], tuple[object, ...], dict[str, Any]], call
-            )
+            fn, args, kwargs = parcel.open()
             _targets.append(fn)
             data = pack_result(reject_coroutine(fn(*args, **kwargs)))
         except BaseException as exc:
@@ -121,11 +118,12 @@ def run_in_process(
     """
     deadline = time.monotonic() + timeout
     ctx = multiprocessing.get_context()
-    call = prepickle(ctx.get_start_method(), (fn, args, dict(kwargs)))
+    data, held = prepickle(ctx.get_start_method(), (fn, args, dict(kwargs)))
     if time.monotonic() >= deadline:
         raise Expired  # pickling the call used up the budget: never start it
     reader, writer = ctx.Pipe(duplex=False)
-    process = ctx.Process(target=_child, args=(call, writer), name=thread_name(fn))
+    parcel = Parcel(writer, data, held)
+    process = ctx.Process(target=_child, args=(parcel,), name=thread_name(fn))
     started = finished = False
     try:
         process.start()

@@ -77,6 +77,12 @@ def test_a_budget_under_a_millisecond_counts_as_used_up_and_never_starts_the_cal
     assert called == []
 
 
+def test_a_budget_of_exactly_a_millisecond_starts_the_call() -> None:
+    called: list[int] = []
+    assert run(called.append, FLOOR, args=(1,), mode="signal", default="late") in (None, "late")
+    assert called == [1]
+
+
 def _raises_a_cause_cycle_after_the_timeout() -> None:
     with contextlib.suppress(CallTimeout):
         time.sleep(30.0)

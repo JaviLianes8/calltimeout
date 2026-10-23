@@ -56,8 +56,10 @@ The budget covers pickling the call and starting the child.
 - `fn`, its arguments and its result cross the process boundary, so they must pickle.
   Targets must be importable: define them at module level, and guard the entry point of
   a script with `if __name__ == "__main__":` as `multiprocessing` requires. Locks, queues,
-  pipe ends and other `multiprocessing` objects can be passed as arguments, any number of
-  them, and a pipe end is never left open in the caller.
+  pipe ends, sockets, manager proxies and other `multiprocessing` objects can be passed as
+  arguments, any number of them. Pipe ends and sockets are handed over by the start itself
+  (on Windows, duplicated straight into the child), so none is left open in the caller,
+  even when the budget runs out before the child has loaded the call.
 - Under spawn and forkserver a call that cannot be pickled (a lambda, a thread lock, a
   pool, an argument nested too deeply) raises `pickle.PicklingError` before any process
   starts, chained from pickle's own error, whose type depends on the Python version.
@@ -188,6 +190,9 @@ boundaries themselves. Messages quote at most 60 characters of any value you pas
 a huge argument never ends up in a log. The error pickle raised, chained as the cause of
 a `PicklingError` for a call, can quote more: its text is cut after 300 characters, and
 only its first ten notes are kept, each cut after 60 characters, then a count of the rest.
+An error whose text cannot be cut in place (it has a `__str__` of its own, or `args` that
+cannot be set) is replaced, as the cause, by a `RuntimeError` naming its type, bounded the
+same way.
 
 ## In async code
 

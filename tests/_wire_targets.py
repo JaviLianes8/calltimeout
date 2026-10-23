@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import multiprocessing
+import socket
 import threading
+import time
 from typing import Any
 
 
@@ -121,3 +123,48 @@ def nested_dicts(depth: int, leaf: object) -> dict[str, object]:
     for level in range(depth):
         value = {f"level{level}": value}
     return value
+
+
+class Slow:
+    """Takes the given seconds to pickle."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+
+    def __reduce__(self) -> tuple[object, ...]:
+        time.sleep(self.seconds)
+        return (int, ())
+
+
+class OnceOnly:
+    """Pickles the first time only."""
+
+    def __init__(self) -> None:
+        self.pickled = False
+
+    def __reduce__(self) -> tuple[object, ...]:
+        if self.pickled:
+            raise TypeError("this object pickles only once")
+        self.pickled = True
+        return (int, (7,))
+
+
+class OddClass:
+    """Pickles as an int, while its __class__ raises, as an unbound lazy proxy's can."""
+
+    @property  # type: ignore[misc]
+    def __class__(self) -> type:
+        raise RuntimeError("not bound yet")
+
+    def __reduce__(self) -> tuple[object, ...]:
+        return (int, (5,))
+
+
+def sock_send_and_close(sock: socket.socket, *others: object) -> str:
+    sock.sendall(b"hi")
+    sock.close()
+    return "sent"
+
+
+def size(sized: Any, *others: object) -> int:
+    return len(sized)

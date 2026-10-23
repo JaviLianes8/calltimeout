@@ -39,16 +39,23 @@ on `main`.
   `pickle.PicklingError` before any process starts, chained from pickle's own error
   (which was raised as it was, a different type on each Python version). That error is
   bounded in place: its text is cut after 300 characters, and only its first ten notes
-  are kept, each cut after 60 characters, followed by a count of the rest. A call holding
+  are kept, each cut after 60 characters, followed by a count of the rest; one whose text
+  cannot be cut in place (a `__str__` of its own, `args` that cannot be set) is replaced
+  as the cause by a `RuntimeError` naming its type, bounded the same way. A call holding
   objects that `multiprocessing` only pickles while a child starts (locks, queues, shared
   values), any number of them, is first rehearsed as the start will pickle it, so one
   whose contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same
   way. An argument whose pickling raised `NotImplementedError` (a pool), `RecursionError`
   or a `RuntimeError` used to fail after the child was created, and on Windows it then
   broke the next process-mode call.
-- Process mode: a pipe end or socket in the call is duplicated once, for the child that
-  takes it. A call that also held a lock or queue left a duplicate open in the caller
-  every time, so the reader of that pipe never saw its end and file handles ran out.
+- Process mode: the call's function and arguments are pickled once, before the start;
+  only its pipe ends, sockets and manager proxies, or the whole call when it holds locks
+  or queues, are pickled by the start itself. Pipe ends and sockets are handed to the
+  child by that start (on Windows, duplicated straight into the child), so none is left
+  open in the caller, even when the budget runs out before the child has loaded the call.
+  On Windows a call stopped that early left one handle open in the caller for each pipe
+  end and socket in it, plus one for the result pipe whatever the call held, so the
+  reader of that pipe never saw its end and handles ran out.
 - `with_timeout` in process mode sends a callable that pickles by value (a
   `functools.partial`, a callable object) as it is, as `run` does; it failed with
   `AttributeError` under spawn and forkserver.

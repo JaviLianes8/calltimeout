@@ -1,15 +1,11 @@
-"""What crosses the process boundary: the call going in, the outcome coming back."""
+"""What comes back from the child, and the errors about what cannot cross the boundary."""
 
 from __future__ import annotations
 
-import io
+import contextlib
 import pickle
-import socket
 import traceback
-from multiprocessing import connection
-from multiprocessing.context import get_spawning_popen, set_spawning_popen
-from multiprocessing.reduction import ForkingPickler
-from typing import Any, cast
+from typing import cast
 
 from ._text import LIMIT, call_name, cut
 
@@ -19,14 +15,6 @@ _DETAIL = 300
 
 # Notes kept on a pickling error (newer Pythons add one per level, quoting keys).
 _NOTES = 10
-
-# Objects whose pickling outside Process.start() duplicates an OS handle for a child that
-# may never take it: the duplicate then stays open in this process.
-_HANDLES: tuple[type, ...] = (
-    socket.socket,
-    connection.Connection,
-    getattr(connection, "PipeConnection", connection.Connection),  # Windows only
-)
 
 
 class RemoteTraceback(Exception):
@@ -40,97 +28,52 @@ class RemoteTraceback(Exception):
         return self.text
 
 
-class _Rehearsal:
-    """Stands in for the Popen of a start, so locks and queues pickle as they would there.
-
-    Nothing is duplicated for a child: what the rehearsal pickles is thrown away.
-    """
-
-    def duplicate_for_child(self, handle: int) -> int:
-        return handle
-
-    def DupFd(self, fd: int) -> int:
-        return fd
-
-
-class _Trial(ForkingPickler):
-    """Pickles a call with pipes and sockets checked but left out, so none is duplicated."""
-
-    def __init__(self) -> None:
-        self.buffer = io.BytesIO()
-        super().__init__(self.buffer)
-        self.handles = False
-
-    def reducer_override(self, obj: Any) -> Any:
-        if not isinstance(obj, _HANDLES):
-            return NotImplemented
-        if cast(Any, obj).fileno() < 0:  # a closed pipe raises, a closed socket gives -1
-            raise OSError(f"cannot send a closed {type(obj).__name__}")
-        self.handles = True
-        return (int, ())
-
-
-def _bounded(problem: Exception) -> Exception:
-    """Bound pickle's error in place: its text, often quoting a value, and its notes."""
-    try:
-        text = str(problem)
-    except Exception:
-        text = ""
-    if len(text) > _DETAIL and len(problem.args) == 1:
-        problem.args = (cut(text, _DETAIL),)
-    notes = getattr(problem, "__notes__", None)
+def _cut_notes(source: BaseException, target: BaseException) -> None:
+    notes = getattr(source, "__notes__", None)
     if isinstance(notes, list) and notes:
         kept = [cut(note) if isinstance(note, str) else "<note>" for note in notes[:_NOTES]]
         if len(notes) > _NOTES:
             kept.append(f"... and {len(notes) - _NOTES} more notes")
-        vars(problem)["__notes__"] = kept  # what add_note() writes to
-    return problem
+        vars(target)["__notes__"] = kept  # what add_note() writes to
 
 
-def _unsendable(problem: Exception) -> pickle.PicklingError:
-    """The documented error for a call that cannot be pickled."""
-    detail = _detail(_bounded(problem), LIMIT)
-    return pickle.PicklingError(f"the call cannot be sent to the child process: {detail}")
+def _bounded(problem: Exception) -> Exception:
+    """Bound pickle's error, often quoting a value: its text and its notes.
 
-
-def _rehearse(call: tuple[object, ...]) -> None:
-    """Pickle the call as Process.start() will, with every lock and queue in it."""
-    previous = get_spawning_popen()
-    set_spawning_popen(cast(Any, _Rehearsal()))
-    try:
-        _Trial().dump(call)
-    except Exception as problem:
-        raise _unsendable(problem) from problem
-    finally:
-        set_spawning_popen(previous)
-
-
-def prepickle(method: str, call: tuple[object, ...]) -> object:
-    """Pickle the call before any process exists, so a start cannot fail half way.
-
-    A start that failed while pickling (seen on Windows) left a half-built Popen whose
-    finalizer later closed handle numbers reused by the next call's pipe. Raises
-    pickle.PicklingError, chained from pickle's own error, for a call that cannot pickle.
-    Returns the bytes the child loads, or the call itself when it holds objects that only
-    pickle inside Process.start() (locks, queues), once a rehearsal proved it pickles.
+    It is cut in place when its args carry its text. Otherwise (a __str__ of its own,
+    args that cannot be set) a RuntimeError naming its type and quoting it stands in.
     """
-    if method == "fork":
-        return call  # nothing is pickled
-    trial = _Trial()
     try:
-        trial.dump(call)
+        text = str(problem)
     except Exception:
-        # Most likely a lock or queue refusing to pickle outside a start: rehearse one,
-        # which also raises the documented error when something else is wrong.
-        _rehearse(call)
-        return call
-    if not trial.handles:
-        return trial.buffer.getvalue()
+        text = ""
     try:
-        # Pipes and sockets are duplicated once, for the child that takes them.
-        return bytes(ForkingPickler.dumps(call))
-    except Exception as problem:
-        raise _unsendable(problem) from problem
+        if len(text) > _DETAIL:
+            problem.args = (cut(text, _DETAIL),)
+            if len(str(problem)) > _DETAIL + 3:
+                raise ValueError("its text does not come from its args")
+        _cut_notes(problem, problem)
+        return problem
+    except Exception:
+        pass
+    name = f"{type(problem).__module__}.{type(problem).__qualname__}"
+    stand_in = RuntimeError(cut(f"{name}: {text}", _DETAIL))
+    with contextlib.suppress(Exception):
+        _cut_notes(problem, stand_in)
+    return stand_in.with_traceback(problem.__traceback__)
+
+
+def unsendable(problem: Exception) -> pickle.PicklingError:
+    """The documented error for a call that cannot be pickled, its cause pickle's, bounded.
+
+    Raise it with ``raise error from error.__cause__`` outside the handler of problem, so
+    the unbounded original is not kept as its context either.
+    """
+    cause = _bounded(problem)
+    detail = _detail(cause, LIMIT)
+    error = pickle.PicklingError(f"the call cannot be sent to the child process: {detail}")
+    error.__cause__ = cause
+    return error
 
 
 def _detail(exc: BaseException, limit: int = _DETAIL) -> str:

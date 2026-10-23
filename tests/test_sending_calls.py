@@ -127,3 +127,17 @@ def test_the_decorator_sends_a_callable_that_pickles_by_value(
 
 def test_the_child_process_is_named_after_the_call() -> None:
     assert run(_wire_targets.process_name, 30.0, mode="process") == "calltimeout:process_name"
+
+
+def test_a_proxy_of_a_manager_with_its_own_authkey_reaches_the_child() -> None:
+    from multiprocessing.managers import SyncManager
+
+    with SyncManager(authkey=b"its-own-key") as manager:
+        shared = manager.dict(a=1, b=2)
+        assert run(_wire_targets.size, 60.0, args=(shared,), mode="process") == 2
+        lock = multiprocessing.Lock()
+        assert run(_wire_targets.size, 60.0, args=(shared, lock), mode="process") == 2
+
+
+def test_an_argument_whose_class_attribute_raises_is_sent_as_it_pickles() -> None:
+    assert run(_wire_targets.count, 30.0, args=(_wire_targets.OddClass(),), mode="process") == 1
