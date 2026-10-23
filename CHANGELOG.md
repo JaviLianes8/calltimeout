@@ -45,17 +45,23 @@ on `main`.
   objects that `multiprocessing` only pickles while a child starts (locks, queues, shared
   values), any number of them, is first rehearsed as the start will pickle it, so one
   whose contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same
-  way. An argument whose pickling raised `NotImplementedError` (a pool), `RecursionError`
-  or a `RuntimeError` used to fail after the child was created, and on Windows it then
-  broke the next process-mode call.
+  way, and one that still fails when the start pickles it again (an object that pickles
+  only once) raises the same error, its child stopped before it runs anything. An
+  argument whose pickling raised `NotImplementedError` (a pool), `RecursionError` or a
+  `RuntimeError` used to fail after the child was created, and on Windows it then broke
+  the next process-mode call.
 - Process mode: the call's function and arguments are pickled once, before the start;
   only its pipe ends, sockets and manager proxies, or the whole call when it holds locks
   or queues, are pickled by the start itself. Pipe ends and sockets are handed to the
-  child by that start (on Windows, duplicated straight into the child), so none is left
-  open in the caller, even when the budget runs out before the child has loaded the call.
-  On Windows a call stopped that early left one handle open in the caller for each pipe
-  end and socket in it, plus one for the result pipe whatever the call held, so the
-  reader of that pipe never saw its end and handles ran out.
+  child by that start (POSIX passes the descriptors with it, Windows duplicates them
+  straight into the child), so none is left open in the caller, even when the budget
+  runs out while pickling the call or before the child has loaded it. Such a call left a
+  duplicate of each one open in the caller (on Windows also one of the result pipe,
+  whatever the call held; under forkserver the caller also printed `ConnectionResetError`
+  tracebacks), so the reader of that pipe never saw its end and handles ran out. A
+  manager proxy goes with its manager's authkey, as `multiprocessing` sends it: one of a
+  manager with its own authkey failed in the child with `AuthenticationError` unless the
+  call also held a lock. An argument whose `__class__` raises is sent as it pickles.
 - `with_timeout` in process mode sends a callable that pickles by value (a
   `functools.partial`, a callable object) as it is, as `run` does; it failed with
   `AttributeError` under spawn and forkserver.

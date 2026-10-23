@@ -13,7 +13,7 @@ from ._errors import CallCrashed, Expired
 from ._parcel import Parcel, prepickle
 from ._thread import thread_name
 from ._validate import reject_coroutine
-from ._wire import pack_error, pack_result, unpack
+from ._wire import pack_error, pack_result, unpack, unsendable
 
 T = TypeVar("T")
 
@@ -42,6 +42,8 @@ class _Reader(Protocol):
 
 
 def _child(parcel: Parcel) -> None:
+    if parcel.conn is None:
+        return  # the call could not be sent: the caller is stopping this child
     conn = cast(Connection, parcel.conn)
     try:
         try:
@@ -129,6 +131,9 @@ def run_in_process(
         process.start()
         started = True
         writer.close()
+        if parcel.refused is not None:
+            error = unsendable(parcel.refused)
+            raise error from error.__cause__
         ready = _await(reader, process, deadline)
         if not ready:
             raise Expired

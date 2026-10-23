@@ -132,11 +132,19 @@ class Parcel:
         self.data = data
         self.held = held
         self.loaded = loaded
+        self.refused: Exception | None = None
 
     def __reduce__(self) -> tuple[object, ...]:
         # Runs inside Process.start(): the held objects go to the child it created. The
         # write end travels apart, so the child can report a call it fails to load.
-        return (_arrived, (dumps_for_child(self.conn), self.data, dumps_for_child(self.held)))
+        try:
+            held = dumps_for_child(self.held)
+        except Exception as problem:
+            # Raised here, it would leave a half-built Popen (see prepickle). The start
+            # finishes instead, and the caller stops the child before it runs anything.
+            self.refused = problem
+            return (Parcel, (None, None, ()))
+        return (_arrived, (dumps_for_child(self.conn), self.data, held))
 
     def open(self) -> Call:
         """Rebuild the call in the child."""

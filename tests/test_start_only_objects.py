@@ -127,3 +127,19 @@ def test_a_lock_from_another_context_works_or_raises_the_documented_error() -> N
     except pickle.PicklingError as error:
         assert SENT in str(error)
     assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2
+
+
+@needs_pickling
+@pytest.mark.parametrize("lock_first", [True, False], ids=["lock first", "lock last"])
+def test_a_call_that_pickles_for_the_rehearsal_but_not_for_the_start_raises_pickling_error(
+    lock_first: bool,
+) -> None:
+    lock, once = multiprocessing.Lock(), _wire_targets.OnceOnly()
+    args = (lock, once) if lock_first else (once, lock)
+    with pytest.raises(pickle.PicklingError, match=SENT) as info:
+        run(_wire_targets.count, 30.0, args=args, mode="process")
+    assert "this object pickles only once" in str(info.value)
+    assert isinstance(info.value.__cause__, TypeError)
+    assert info.value.__context__ in (None, info.value.__cause__)
+    for _ in range(3):
+        assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2

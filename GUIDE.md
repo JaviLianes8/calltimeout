@@ -65,6 +65,8 @@ The budget covers pickling the call and starting the child.
   starts, chained from pickle's own error, whose type depends on the Python version.
   A call holding locks or queues is rehearsed as the start will pickle it, so one whose
   contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same way.
+  One that still fails when the start pickles it again (an object that pickles only once)
+  raises the same error, and the child created for it is stopped before it runs anything.
   Under fork nothing is pickled on the way in.
 - The child process is named `calltimeout:<function>`, like the thread of thread mode.
 - A child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
