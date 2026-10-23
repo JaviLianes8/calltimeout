@@ -159,6 +159,7 @@ def test_a_closed_end_raises_pickling_error_and_spoils_no_later_call(
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_wire_targets.count, 30.0, args=(CLOSED[kind](), *others), mode="process")
     assert "cannot send a closed" in str(info.value)
+    assert type(info.value.__cause__) is ValueError  # cut in place, never the stand-in
     assert starts == []
     assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2
 

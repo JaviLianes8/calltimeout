@@ -28,8 +28,20 @@ HOSTILE: dict[str, Callable[[], Exception]] = {
     "str that lies about its length": _hostile_errors.LyingErr,
     "str that changes between reads": _hostile_errors.Flip,
     "arg whose str changes between reads": lambda: TypeError(_hostile_errors.FlipArg()),
+    "str arg whose str changes between reads": lambda: TypeError(_hostile_errors.FlipStr("x")),
+    "second arg whose repr changes between reads": lambda: TypeError(
+        "s", _hostile_errors.FlipRepr()
+    ),
+    "arg whose str lies about its length": lambda: TypeError(_hostile_errors.LyingText()),
     "notes set to a str": lambda: _hostile_errors.with_notes(HUGE),
     "notes set to a tuple": lambda: _hostile_errors.with_notes((HUGE,) * 3),
+    "notes set to a dict": lambda: _hostile_errors.with_notes({"k": HUGE}),
+    "notes set to a list subclass": lambda: _hostile_errors.with_notes(
+        _hostile_errors.NoteList([HUGE])
+    ),
+    "a note that lies about its length": lambda: _hostile_errors.with_notes(
+        [_hostile_errors.LyingStr(HUGE)]
+    ),
     "raised from a huge error": lambda: _hostile_errors.chained_to(ValueError(HUGE)),
     "raised while handling a huge error": lambda: _hostile_errors.in_context_of(KeyError(HUGE)),
     "raised while handling a huge interrupt": lambda: _hostile_errors.in_context_of(
@@ -65,7 +77,7 @@ def test_the_printed_error_of_a_call_that_cannot_be_sent_stays_short(
     assert cause.__cause__ is None and cause.__context__ is None  # nothing chained to it
     printed = _printed(info.value)
     assert len(printed) < 10_000, len(printed)
-    assert all(letter * 301 not in printed for letter in "HQYFA")
+    assert all(letter * 301 not in printed for letter in "HQYFABCD")
 
 
 @needs_pickling

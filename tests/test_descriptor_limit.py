@@ -66,3 +66,24 @@ def test_a_forkserver_call_counts_the_two_descriptors_of_each_queue() -> None:
     with pytest.raises(pickle.PicklingError, match=f"at most {LIMIT}"):
         run(_wire_targets.count, 120.0, args=tuple(queues), mode="process")
     assert run(_wire_targets.count, 120.0, args=tuple(queues[:-1]), mode="process") == LIMIT // 2
+
+
+@pytest.mark.skipif(METHOD != "forkserver", reason="only a forkserver start has the limit")
+def test_a_forkserver_call_counts_the_one_descriptor_of_a_shared_value(
+    ends: list[Any], starts: list[BaseProcess]
+) -> None:
+    value = multiprocessing.Value("i")
+    held = (*ends[: LIMIT - 1], value)
+    assert run(_wire_targets.count, 120.0, args=held, mode="process") == LIMIT
+    starts.clear()
+    with pytest.raises(pickle.PicklingError, match=f"holds {LIMIT + 1} descriptors"):
+        run(_wire_targets.count, 120.0, args=(*ends[:LIMIT], value), mode="process")
+    assert starts == []
+
+
+@pytest.mark.skipif(METHOD != "forkserver", reason="only a forkserver start has the limit")
+def test_a_forkserver_call_counts_no_descriptor_for_a_manager_proxy(ends: list[Any]) -> None:
+    with multiprocessing.Manager() as manager:
+        shared = manager.dict()
+        held = (*ends[:LIMIT], shared)
+        assert run(_wire_targets.count, 120.0, args=held, mode="process") == LIMIT + 1

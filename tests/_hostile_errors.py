@@ -106,3 +106,40 @@ def in_context_of(huge: BaseException) -> Exception:
             raise TypeError("not registered")
         except TypeError as error:
             return error
+
+
+class FlipStr(str):
+    """A str subclass whose own str is short only the first time it is read."""
+
+    def __str__(self) -> str:
+        self.reads = getattr(self, "reads", 0) + 1
+        return "short" if self.reads == 1 else "SECRET-" + "B" * 100_000
+
+
+class FlipRepr:
+    """An argument whose repr is short only the first time it is read."""
+
+    def __init__(self) -> None:
+        self.reads = 0
+
+    def __repr__(self) -> str:
+        self.reads += 1
+        return "short" if self.reads == 1 else "SECRET-" + "C" * 100_000
+
+
+class LyingText:
+    """An argument whose str is a long str subclass that claims to be empty."""
+
+    def __str__(self) -> str:
+        return LyingStr("SECRET-" + "D" * 100_000)
+
+
+class BadStrArg:
+    """An argument whose str raises."""
+
+    def __str__(self) -> str:
+        raise ValueError("__str__ of this argument fails")
+
+
+class NoteList(list[object]):
+    """A list subclass, which traceback prints as notes but is not a plain list."""

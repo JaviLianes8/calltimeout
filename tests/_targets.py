@@ -46,6 +46,10 @@ def boom() -> None:
     raise ValueError("boom")
 
 
+def boom_with(*args: object) -> None:
+    raise ValueError("boom")
+
+
 def hard_exit(code: int) -> None:
     os._exit(code)
 
