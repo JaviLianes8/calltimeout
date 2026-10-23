@@ -5,14 +5,25 @@
 - ``CallTimeout`` (a ``TimeoutError``) is raised when the budget runs out, and
   ``CallCrashed`` (a ``RuntimeError``) when a process-mode child dies without a result.
 - ``Mode`` is the ``Literal`` type of the three mechanism names, for annotating your
-  own wrappers.
+  own wrappers, so type checkers reject any other name.
+
+>>> from calltimeout import run
+>>> run(pow, 5.0, args=(2, 10))
+1024
+
+Mode
+----
+``Mode`` is ``Literal["thread", "process", "signal"]``, the names ``run`` and
+``with_timeout`` accept. Use it to annotate your own wrappers:
 
 >>> from typing import get_args
 >>> from calltimeout import Mode, run
+>>> def quick(mode: Mode) -> int:
+...     return run(pow, 5.0, args=(2, 3), mode=mode)
 >>> get_args(Mode)
 ('thread', 'process', 'signal')
->>> run(pow, 5.0, args=(2, 10))
-1024
+>>> quick("thread")
+8
 """
 
 from ._api import Mode, run

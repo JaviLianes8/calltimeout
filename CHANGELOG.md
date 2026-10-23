@@ -25,7 +25,8 @@ on `main`.
 - A real-number timeout whose conversion to `float` fails raises `TypeError` (the
   conversion's own error is chained as the cause).
 - Error messages are bounded: a quoted value or name is cut after 60 characters, a
-  quoted exception after 300, and an integer of more than 64 bits is described by its
+  quoted exception after 300 (60 for pickle's error about a call that cannot be sent,
+  which can quote an argument), and an integer of more than 64 bits is described by its
   size instead of printed.
 - Process mode: the budget also covers pickling the call and starting the child, and a
   call whose pickling used it up is never started. A child that cannot load the call
@@ -36,12 +37,18 @@ on `main`.
   `pickle.PicklingError` with the child's traceback of the failure.
 - Process mode: a call whose function or arguments cannot be pickled raises
   `pickle.PicklingError` before any process starts, chained from pickle's own error
-  (which was raised as it was, a different type on each Python version), whose notes
-  are bounded: ten at most, each cut after 60 characters. Only the objects `multiprocessing`
-  pickles while a child starts (locks, queues) are left to the start, and only once the
-  rest of the call is known to pickle: an argument whose pickling raised
-  `NotImplementedError` (a pool), `RecursionError` or another `RuntimeError` used to fail
-  after the child was created, and on Windows it then broke the next process-mode call.
+  (which was raised as it was, a different type on each Python version). That error is
+  bounded in place: its text is cut after 300 characters, and only its first ten notes
+  are kept, each cut after 60 characters, followed by a count of the rest. A call holding
+  objects that `multiprocessing` only pickles while a child starts (locks, queues, shared
+  values), any number of them, is first rehearsed as the start will pickle it, so one
+  whose contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same
+  way. An argument whose pickling raised `NotImplementedError` (a pool), `RecursionError`
+  or a `RuntimeError` used to fail after the child was created, and on Windows it then
+  broke the next process-mode call.
+- Process mode: a pipe end or socket in the call is duplicated once, for the child that
+  takes it. A call that also held a lock or queue left a duplicate open in the caller
+  every time, so the reader of that pipe never saw its end and file handles ran out.
 - `with_timeout` in process mode sends a callable that pickles by value (a
   `functools.partial`, a callable object) as it is, as `run` does; it failed with
   `AttributeError` under spawn and forkserver.
@@ -53,17 +60,21 @@ on `main`.
 - Signal mode: an exception raised with an explicit cause while handling the timeout
   (`raise E from other`) counts as the timeout, like `raise E` and `raise E from None`;
   it escaped as `E`.
-- Signal mode: a timer tick less than 1 ms before the deadline ends the call there.
-  The timer was re-armed for the rest, and a re-arm that short could fire before the
-  interrupted system call blocked again, so a blocking call overran by its whole length.
+- Signal mode: no timer is armed for less than 1 ms, so a timer tick less than 1 ms
+  before the deadline ends the call there, a timeout under 1 ms ends it at once without
+  starting it (like a zero timeout), and an enclosing timer due sooner than 1 ms has its
+  handler run up to 1 ms late. A timer that short could fire before the interrupted
+  system call blocked again, so a blocking call overran by its whole length.
 - Signal mode: a timer tick that lands after the call has finished can no longer re-arm
   the timer.
 - Thread mode measures the budget from the start of `run`, including starting the thread.
 - The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
   only exists from Python 3.11.
-- Every public name has a docstring with an example that runs as a doctest (`Mode`
-  included), and a new GUIDE covers each mode, every error and use from async code.
-  The process-mode examples guard their entry point and are tested as scripts.
+- Every public name has a docstring with an example that runs as a doctest, `Mode` in
+  the package docstring (typing caches `Literal` aliases, so a docstring of its own would
+  relabel the caller's identical aliases), and a new GUIDE covers each mode, every
+  error and use from async code. The process-mode examples guard their entry point and
+  are tested as scripts.
 - `Development Status :: 5 - Production/Stable`.
 
 ## [0.2.0] - 2026-10-12

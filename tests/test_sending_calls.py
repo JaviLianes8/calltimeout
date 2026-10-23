@@ -9,6 +9,7 @@ import pickle
 import threading
 from collections.abc import Callable, Iterator
 from multiprocessing.process import BaseProcess
+from typing import Any, cast
 
 import _targets
 import _wire_targets
@@ -30,6 +31,10 @@ BAD_ARGUMENTS: dict[str, Callable[[], object]] = {
     "deeply nested": lambda: _wire_targets.nested(100_000),
     "thread lock": threading.Lock,
     "start-only lock then thread lock": lambda: (multiprocessing.Lock(), threading.Lock()),
+    "start-only value guarded by a thread lock": lambda: multiprocessing.Value(
+        "i", 0, lock=cast(Any, threading.Lock())
+    ),
+    "reduce raising RuntimeError like assert_spawning": _wire_targets.RefusesLikeAssertSpawning,
 }
 
 

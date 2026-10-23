@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import threading
+from typing import Any
 
 
 def process_name() -> str:
@@ -71,3 +72,52 @@ class Multiply:
 
     def __call__(self, value: int) -> int:
         return value * self.factor
+
+
+def count(*args: object) -> int:
+    return len(args)
+
+
+def write_and_close(conn: Any, *others: object) -> str:
+    conn.send("hello")
+    conn.close()
+    return "sent"
+
+
+class RefusesLikeAssertSpawning:
+    """Raises RuntimeError from a frame holding a local named obj, as assert_spawning does."""
+
+    def __reduce__(self) -> tuple[object, ...]:
+        obj = self
+        raise RuntimeError(f"this object refuses to be pickled: {type(obj).__name__}")
+
+
+REDUCED: list[int] = []
+
+
+class Counted:
+    """Counts how many times the caller pickles it."""
+
+    def __reduce__(self) -> tuple[object, ...]:
+        REDUCED.append(1)
+        return (Counted, ())
+
+
+class SecretToken:
+    """Its repr holds a secret, and pickling it fails with pickle quoting that repr."""
+
+    def __init__(self, secret: str) -> None:
+        self.secret = secret
+
+    def __repr__(self) -> str:
+        return f"SecretToken({self.secret!r})"
+
+    def __reduce__(self) -> str:
+        return "NO_SUCH_GLOBAL_IN_THIS_MODULE"
+
+
+def nested_dicts(depth: int, leaf: object) -> dict[str, object]:
+    value: dict[str, object] = {"leaf": leaf}
+    for level in range(depth):
+        value = {f"level{level}": value}
+    return value

@@ -16,20 +16,10 @@ from ._validate import check_call, check_mode, check_timeout
 T = TypeVar("T")
 D = TypeVar("D")
 
+#: The names of the three mechanisms ``run`` and ``with_timeout`` accept.
 Mode = Literal["thread", "process", "signal"]
-Mode.__doc__ = """The names of the three mechanisms ``run`` and ``with_timeout`` accept.
-
-Use it to annotate your own wrappers, so type checkers reject any other name.
-
->>> from typing import get_args
->>> from calltimeout import Mode, run
->>> def quick(mode: Mode) -> int:
-...     return run(pow, 5.0, args=(2, 3), mode=mode)
->>> get_args(Mode)
-('thread', 'process', 'signal')
->>> quick("thread")
-8
-"""
+# Documented in the package docstring: typing caches Literal[...], so a __doc__ set here
+# would also relabel every identical Literal in the caller's own code.
 
 RUNNERS: Final = {
     "thread": run_in_thread,
@@ -91,12 +81,13 @@ def run(
     ``"signal"`` (POSIX, main thread only) raises ``CallTimeout`` inside fn.
 
     ``timeout`` is a number of seconds (an int, float or other real number; not a bool,
-    NaN or negative); zero raises at once without starting fn. When the budget runs out
-    ``CallTimeout`` is raised, or ``default`` is returned if one is given. An exception
-    raised by fn reaches the caller, and a ``CallTimeout`` from a nested call inside fn
-    always propagates. Bad arguments raise ``TypeError`` or ``ValueError`` before
-    anything starts; in process mode a call that cannot be pickled raises
-    ``pickle.PicklingError`` before any process starts.
+    NaN or negative); zero raises at once without starting fn, and so does any budget
+    under 1 ms in signal mode. When the budget runs out ``CallTimeout`` is raised, or
+    ``default`` is returned if one is given. An exception raised by fn reaches the
+    caller, and a ``CallTimeout`` from a nested call inside fn always propagates. Bad
+    arguments raise ``TypeError`` or ``ValueError`` before anything starts; in process
+    mode a call that cannot be pickled raises ``pickle.PicklingError`` before any
+    process starts.
 
     >>> import math, time
     >>> from calltimeout import CallTimeout, run

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import io
 import pickle
+import socket
 import traceback
-from multiprocessing.context import assert_spawning
+from multiprocessing import connection
+from multiprocessing.context import get_spawning_popen, set_spawning_popen
 from multiprocessing.reduction import ForkingPickler
 from typing import Any, cast
 
-from ._text import call_name, cut
+from ._text import LIMIT, call_name, cut
 
 # Characters of an exception's text kept in a message built around it; the full text
 # still travels in the chained traceback.
@@ -18,8 +20,13 @@ _DETAIL = 300
 # Notes kept on a pickling error (newer Pythons add one per level, quoting keys).
 _NOTES = 10
 
-# Objects of one call that may only pickle inside Process.start() (locks, queues).
-_SKIPS = 100
+# Objects whose pickling outside Process.start() duplicates an OS handle for a child that
+# may never take it: the duplicate then stays open in this process.
+_HANDLES: tuple[type, ...] = (
+    socket.socket,
+    connection.Connection,
+    getattr(connection, "PipeConnection", connection.Connection),  # Windows only
+)
 
 
 class RemoteTraceback(Exception):
@@ -33,39 +40,69 @@ class RemoteTraceback(Exception):
         return self.text
 
 
-def _start_only(problem: Exception) -> list[object]:
-    """[the object] if problem is multiprocessing refusing one outside Process.start()."""
-    tb = problem.__traceback__
-    while tb is not None and tb.tb_next is not None:
-        tb = tb.tb_next
-    if type(problem) is not RuntimeError or tb is None:
-        return []
-    frame = tb.tb_frame
-    if frame.f_code is not assert_spawning.__code__ or "obj" not in frame.f_locals:
-        return []
-    return [frame.f_locals["obj"]]
+class _Rehearsal:
+    """Stands in for the Popen of a start, so locks and queues pickle as they would there.
+
+    Nothing is duplicated for a child: what the rehearsal pickles is thrown away.
+    """
+
+    def duplicate_for_child(self, handle: int) -> int:
+        return handle
+
+    def DupFd(self, fd: int) -> int:
+        return fd
 
 
-class _DryRun(ForkingPickler):
-    """Pickles a call with the objects that only pickle inside Process.start() left out."""
+class _Trial(ForkingPickler):
+    """Pickles a call with pipes and sockets checked but left out, so none is duplicated."""
 
-    def __init__(self, file: io.BytesIO, skipped: list[object]) -> None:
-        super().__init__(file)
-        self.skipped = {id(each) for each in skipped}
+    def __init__(self) -> None:
+        self.buffer = io.BytesIO()
+        super().__init__(self.buffer)
+        self.handles = False
 
     def reducer_override(self, obj: Any) -> Any:
-        return (int, ()) if id(obj) in self.skipped else NotImplemented
+        if not isinstance(obj, _HANDLES):
+            return NotImplemented
+        if cast(Any, obj).fileno() < 0:  # a closed pipe raises, a closed socket gives -1
+            raise OSError(f"cannot send a closed {type(obj).__name__}")
+        self.handles = True
+        return (int, ())
 
 
-def _unsendable(problem: Exception) -> pickle.PicklingError:
-    """The documented error for a call that cannot be pickled, with bounded notes."""
+def _bounded(problem: Exception) -> Exception:
+    """Bound pickle's error in place: its text, often quoting a value, and its notes."""
+    try:
+        text = str(problem)
+    except Exception:
+        text = ""
+    if len(text) > _DETAIL and len(problem.args) == 1:
+        problem.args = (cut(text, _DETAIL),)
     notes = getattr(problem, "__notes__", None)
     if isinstance(notes, list) and notes:
         kept = [cut(note) if isinstance(note, str) else "<note>" for note in notes[:_NOTES]]
         if len(notes) > _NOTES:
             kept.append(f"... and {len(notes) - _NOTES} more notes")
         vars(problem)["__notes__"] = kept  # what add_note() writes to
-    return pickle.PicklingError(f"the call cannot be sent to the child process: {_detail(problem)}")
+    return problem
+
+
+def _unsendable(problem: Exception) -> pickle.PicklingError:
+    """The documented error for a call that cannot be pickled."""
+    detail = _detail(_bounded(problem), LIMIT)
+    return pickle.PicklingError(f"the call cannot be sent to the child process: {detail}")
+
+
+def _rehearse(call: tuple[object, ...]) -> None:
+    """Pickle the call as Process.start() will, with every lock and queue in it."""
+    previous = get_spawning_popen()
+    set_spawning_popen(cast(Any, _Rehearsal()))
+    try:
+        _Trial().dump(call)
+    except Exception as problem:
+        raise _unsendable(problem) from problem
+    finally:
+        set_spawning_popen(previous)
 
 
 def prepickle(method: str, call: tuple[object, ...]) -> object:
@@ -74,33 +111,34 @@ def prepickle(method: str, call: tuple[object, ...]) -> object:
     A start that failed while pickling (seen on Windows) left a half-built Popen whose
     finalizer later closed handle numbers reused by the next call's pipe. Raises
     pickle.PicklingError, chained from pickle's own error, for a call that cannot pickle.
+    Returns the bytes the child loads, or the call itself when it holds objects that only
+    pickle inside Process.start() (locks, queues), once a rehearsal proved it pickles.
     """
     if method == "fork":
         return call  # nothing is pickled
-    skipped: list[object] = []
-    while True:
-        try:
-            if not skipped:
-                return bytes(ForkingPickler.dumps(call))
-            _DryRun(io.BytesIO(), skipped).dump(call)
-            # Locks, queues and the like only pickle inside Process.start(), and the rest
-            # of the call pickles: pass it as is.
-            return call
-        except Exception as problem:
-            found = _start_only(problem)
-            # Each round leaves out one more object of the call; one refused again (or a
-            # reduce that keeps making new ones) ends the search.
-            if not found or len(skipped) >= _SKIPS or any(found[0] is x for x in skipped):
-                raise _unsendable(problem) from problem
-            skipped += found
+    trial = _Trial()
+    try:
+        trial.dump(call)
+    except Exception:
+        # Most likely a lock or queue refusing to pickle outside a start: rehearse one,
+        # which also raises the documented error when something else is wrong.
+        _rehearse(call)
+        return call
+    if not trial.handles:
+        return trial.buffer.getvalue()
+    try:
+        # Pipes and sockets are duplicated once, for the child that takes them.
+        return bytes(ForkingPickler.dumps(call))
+    except Exception as problem:
+        raise _unsendable(problem) from problem
 
 
-def _detail(exc: BaseException) -> str:
+def _detail(exc: BaseException, limit: int = _DETAIL) -> str:
     try:
         text = repr(exc)
     except Exception:
         text = f"<{call_name(type(exc))} whose repr failed>"
-    return cut(text, _DETAIL)
+    return cut(text, limit)
 
 
 def pack_error(exc: BaseException) -> bytes:

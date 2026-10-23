@@ -10,11 +10,12 @@ Every example here is run as a script by the tests.
 `fn(*args, **kwargs)` and returns its result. `timeout` is a number of seconds: an `int`,
 a `float` or another real number such as a `Fraction`, not a `bool`, not negative, not
 NaN and at most `threading.TIMEOUT_MAX` (so not infinite). A zero timeout raises at once
-without starting the call. These checks, and the ones on `fn`, `args`, `kwargs` and
-`mode`, happen before anything starts, in every mode. `mode` is one of the three names
-of `Mode`, `Literal["thread", "process", "signal"]`, which you can use to annotate your
-own wrappers. `kwargs` is copied into a plain `dict` in the caller before the call starts,
-so a mapping changed later does not affect the call.
+without starting the call (in signal mode, so does any timeout under 1 ms). These
+checks, and the ones on `fn`, `args`, `kwargs` and `mode`, happen before anything
+starts, in every mode. `mode` is one of the three names of `Mode`,
+`Literal["thread", "process", "signal"]`, which you can use to annotate your own
+wrappers. `kwargs` is copied into a plain `dict` in the caller before the call starts, so
+a mapping changed later does not affect the call.
 
 When the budget runs out, `run` raises `CallTimeout`, or returns `default` if one was
 given (`None` is a valid default). An exception raised by the call reaches the caller. A
@@ -54,11 +55,14 @@ The budget covers pickling the call and starting the child.
 
 - `fn`, its arguments and its result cross the process boundary, so they must pickle.
   Targets must be importable: define them at module level, and guard the entry point of
-  a script with `if __name__ == "__main__":` as `multiprocessing` requires. Locks, queues
-  and other `multiprocessing` objects can be passed as arguments.
+  a script with `if __name__ == "__main__":` as `multiprocessing` requires. Locks, queues,
+  pipe ends and other `multiprocessing` objects can be passed as arguments, any number of
+  them, and a pipe end is never left open in the caller.
 - Under spawn and forkserver a call that cannot be pickled (a lambda, a thread lock, a
   pool, an argument nested too deeply) raises `pickle.PicklingError` before any process
   starts, chained from pickle's own error, whose type depends on the Python version.
+  A call holding locks or queues is rehearsed as the start will pickle it, so one whose
+  contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same way.
   Under fork nothing is pickled on the way in.
 - The child process is named `calltimeout:<function>`, like the thread of thread mode.
 - A child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
@@ -110,13 +114,15 @@ interrupted once it returns to Python.
   `TimeoutError` is) runs on until it gives up.
 - An exception raised while handling the timeout counts as the timeout, also one raised
   `from` another cause; `KeyboardInterrupt`, `SystemExit` and unrelated errors propagate.
-- A tick that arrives less than 1 ms before the deadline (an enclosing timer, a stray
-  `SIGALRM`) ends the call there: re-arming the timer for less could lose the tick and
-  let a blocking call run to its end.
+- No timer is armed for less than 1 ms: a tick due that soon could land before an
+  interrupted system call blocks again and be lost, letting a blocking call run to its
+  end. So a tick that arrives less than 1 ms before the deadline (an enclosing timer, a
+  stray `SIGALRM`) ends the call there, and a timeout under 1 ms ends it at once without
+  starting it.
 - Timers already armed with `setitimer` or `alarm` keep their schedule and their handler
-  still runs when due, so signal-mode calls can be nested; a call that resets
-  `ITIMER_REAL` itself cancels the deadline. A `SIGALRM` handler installed outside Python
-  is refused, because it could not be restored.
+  still runs when due (up to 1 ms late, by the rule above), so signal-mode calls can be
+  nested; a call that resets `ITIMER_REAL` itself cancels the deadline. A `SIGALRM`
+  handler installed outside Python is refused, because it could not be restored.
 
 ```python
 import sys
@@ -179,7 +185,9 @@ print(lookup("id"))  # None
 
 Both exceptions keep their attribute through pickle and copy, so they can cross process
 boundaries themselves. Messages quote at most 60 characters of any value you passed, so
-a huge argument never ends up in a log.
+a huge argument never ends up in a log. The error pickle raised, chained as the cause of
+a `PicklingError` for a call, can quote more: its text is cut after 300 characters, and
+only its first ten notes are kept, each cut after 60 characters, then a count of the rest.
 
 ## In async code
 

@@ -15,12 +15,13 @@ from ._validate import reject_coroutine
 
 T = TypeVar("T")
 
-# Smallest delay used to arm a timer that is already due: zero would disarm it.
+# Smallest delay used to give back an enclosing timer that is already due: zero would
+# disarm it.
 _SOON = 1e-6
 
-# Shortest delay the handler re-arms for. A tick due sooner can land after the handler
-# returns but before the interrupted system call blocks again: it is then lost until the
-# call ends on its own. So a deadline closer than this is treated as reached.
+# Shortest delay the timer is armed for. A tick due sooner can land after the handler
+# returns (or before fn starts) but before the interrupted system call blocks again: it is
+# then lost until the call ends on its own. So a deadline closer than this counts as reached.
 _FLOOR = 1e-3
 
 _NO_SIGALRM = "mode 'signal' needs SIGALRM, which Windows lacks; use 'thread' or 'process'"
@@ -77,6 +78,8 @@ def run_with_signal(
     check_signal_mode()
     if sys.platform == "win32":  # repeated so type checkers on Windows skip the rest
         raise NotImplementedError(_NO_SIGALRM)
+    if timeout < _FLOOR:
+        raise Expired  # already within the last millisecond: a tick that soon can be lost
     start = time.monotonic()
     deadline = start + timeout
     outer_delay, outer_interval = signal.getitimer(signal.ITIMER_REAL)
@@ -85,9 +88,10 @@ def run_with_signal(
     active = True
     raised = CallTimeout(timeout)
 
-    def arm(now: float, shortest: float = _SOON) -> None:
+    def arm(now: float) -> None:
+        # Never sooner than the floor, also toward an enclosing timer that is due sooner.
         due = deadline if outer_due is None else min(deadline, outer_due)
-        signal.setitimer(signal.ITIMER_REAL, max(due - now, shortest))
+        signal.setitimer(signal.ITIMER_REAL, max(due - now, _FLOOR))
 
     def expire(signum: int, frame: FrameType | None) -> None:
         nonlocal fired, outer_due, outer_interval
@@ -106,11 +110,11 @@ def run_with_signal(
                 now = time.monotonic()
                 if delay > 0:
                     outer_due, outer_interval = now + delay, interval
-                arm(now, _FLOOR)
+                arm(now)
         if now >= deadline - _FLOOR:
             fired = True
             raise raised
-        arm(now, _FLOOR)  # woke early: wait for whichever is due next
+        arm(now)  # woke early: wait for whichever is due next
 
     if signal.getsignal(signal.SIGALRM) is None:
         raise RuntimeError("SIGALRM has a handler set outside Python that could not be restored")

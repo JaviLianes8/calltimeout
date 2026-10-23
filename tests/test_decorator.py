@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 
+import _lazy_targets
 import _targets
 import pytest
 
@@ -32,6 +33,21 @@ def test_metadata_of_the_wrapped_function_is_kept() -> None:
     assert add.__name__ == "add"
     assert add.__doc__ == "Add two numbers."
     assert add.__wrapped__(1) == 2  # type: ignore[attr-defined]
+
+
+def test_attributes_set_on_the_wrapped_function_are_kept() -> None:
+    def tagged() -> int:
+        return 1
+
+    tagged.marker = "kept"  # type: ignore[attr-defined]
+    assert with_timeout(5.0)(tagged).marker == "kept"  # type: ignore[attr-defined]
+
+
+def test_process_mode_sends_a_callable_from_a_module_whose_getattr_raises() -> None:
+    # Looking the wrapper up by name hits the module's lazy __getattr__, which raises
+    # ImportError: that only means the wrapper cannot be found, so the callable is sent.
+    double = with_timeout(30.0, mode="process")(_lazy_targets.Double())
+    assert double(21) == 42
 
 
 def test_a_timed_out_call_returns_the_default() -> None:
