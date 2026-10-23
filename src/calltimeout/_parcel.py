@@ -18,7 +18,11 @@ from ._wire import unsendable
 # Pickled outside Process.start(), a pipe end or socket is duplicated for a child that may
 # never take it (the duplicate then stays open here) and a proxy loses its authkey.
 _HANDLES = frozenset(
-    {socket.socket, connection.Connection, getattr(connection, "PipeConnection", socket.socket)}
+    {
+        socket.socket,
+        connection.Connection,
+        getattr(connection, "PipeConnection", connection.Connection),
+    }
 )
 
 Call = tuple[Callable[..., object], tuple[object, ...], dict[str, Any]]
