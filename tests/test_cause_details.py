@@ -74,8 +74,13 @@ def test_notes_set_to_a_str_are_kept_as_one_cut_note() -> None:
     assert vars(cause)["__notes__"] == ["S" * 60 + "..."]
 
 
-@pytest.mark.parametrize("notes", [None, []], ids=["no notes", "empty notes"])
+@pytest.mark.parametrize(
+    "notes",
+    [None, [], _hostile_errors.NoteList(["a", "b"]), _hostile_errors.NoteList()],
+    ids=["no notes", "empty notes", "notes in a list subclass", "empty list subclass"],
+)
 def test_a_cause_without_notes_gets_none_and_takes_new_ones(notes: list[str] | None) -> None:
+    # Notes held in a list subclass are dropped, never left as None: add_note() needs a list.
     error = TypeError("plain") if notes is None else _hostile_errors.with_notes(notes)
     cause = _cause(error)
     own = vars(cause)
