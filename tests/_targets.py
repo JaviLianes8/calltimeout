@@ -149,3 +149,26 @@ def child_only_result() -> object:
 
 
 assigned_pid = with_timeout(30.0, mode="process")(pid)
+
+
+class SlowToPickle:
+    """An argument whose pickling takes a while, to spend the budget before the start."""
+
+    def __reduce__(self) -> tuple[object, tuple[str]]:
+        time.sleep(0.6)
+        return (str, ("pickled",))
+
+
+def touch_with(marker: str, extra: object) -> object:
+    touch(marker)
+    return extra
+
+
+def kill_self(signum: int) -> None:
+    os.kill(os.getpid(), signum)
+
+
+@with_timeout(60.0, mode="process")
+def nested_pids(depth: int) -> list[int]:
+    # Each level calls the decorated function again from inside its own child.
+    return [os.getpid(), *(nested_pids(depth - 1) if depth else [])]

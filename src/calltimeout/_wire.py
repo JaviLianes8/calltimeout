@@ -1,11 +1,15 @@
-"""What crosses the process boundary: the call going in, the outcome coming back."""
+"""What comes back from the child, and the errors about what cannot cross the boundary."""
 
 from __future__ import annotations
 
 import pickle
 import traceback
-from multiprocessing.reduction import ForkingPickler
 from typing import cast
+
+from ._causes import DETAIL, bounded, exact_text
+from ._text import LIMIT, call_name, cut
+
+SENT = "the call cannot be sent to the child process"
 
 
 class RemoteTraceback(Exception):
@@ -19,19 +23,30 @@ class RemoteTraceback(Exception):
         return self.text
 
 
-def prepickle(method: str, call: tuple[object, ...]) -> object:
-    """Pickle the call before any process exists, so a start cannot fail half way.
+def unsendable(problem: Exception) -> pickle.PicklingError:
+    """The documented error for a call that cannot be pickled, its cause pickle's, bounded.
 
-    A start that failed while pickling (seen on Windows) left a half-built Popen whose
-    finalizer later closed handle numbers reused by the next call's pipe.
+    Raise it with ``raise error from error.__cause__`` outside the handler of problem, so
+    the unbounded original is not kept as its context either.
     """
-    if method == "fork":
-        return call  # nothing is pickled
-    try:
-        return bytes(ForkingPickler.dumps(call))
-    except RuntimeError:
-        # Locks, queues and the like only pickle inside Process.start(): pass them as is.
-        return call
+    cause = bounded(problem)
+    detail = _detail(cause, LIMIT)
+    error = pickle.PicklingError(f"{SENT}: {detail}")
+    error.__cause__ = cause
+    return error
+
+
+def too_many(passed: int, limit: int) -> pickle.PicklingError:
+    """The documented error for a call holding more descriptors than a start can pass."""
+    held = f"it holds {passed} descriptors (pipe ends, sockets, two per queue)"
+    return pickle.PicklingError(f"{SENT}: {held} and a forkserver start passes at most {limit}")
+
+
+def _detail(exc: BaseException, limit: int = DETAIL) -> str:
+    text = exact_text(exc, repr)
+    if text is None:
+        text = f"<{call_name(type(exc))} whose repr failed>"
+    return cut(text, limit)
 
 
 def pack_error(exc: BaseException) -> bytes:
@@ -43,10 +58,10 @@ def pack_error(exc: BaseException) -> bytes:
     except Exception as problem:
         name = f"{type(exc).__module__}.{type(exc).__qualname__}"
         try:
-            message = str(exc)
+            message = cut(str(exc), DETAIL)
         except Exception:
             message = "<str() failed>"
-        stand_in = RuntimeError(f"{name}: {message} (not picklable: {problem!r})")
+        stand_in = RuntimeError(f"{cut(name)}: {message} (not picklable: {_detail(problem)})")
         data = pickle.dumps((False, stand_in, text))
     return data
 
@@ -56,9 +71,13 @@ def pack_result(value: object) -> bytes:
     try:
         return pickle.dumps((True, value, ""))
     except Exception as problem:
-        return pack_error(
-            pickle.PicklingError(f"the call's result cannot be sent back: {problem!r}")
-        )
+        try:
+            # Raised from the problem, so the traceback text sent along shows where
+            # pickling failed (and the notes newer Pythons add about which item).
+            message = f"the call's result cannot be sent back: {_detail(problem)}"
+            raise pickle.PicklingError(message) from problem
+        except pickle.PicklingError as error:
+            return pack_error(error)
 
 
 def unpack(data: bytes) -> object:
@@ -66,11 +85,15 @@ def unpack(data: bytes) -> object:
     try:
         ok, payload, text = pickle.loads(data)
     except Exception as problem:
-        raise pickle.UnpicklingError(
-            f"the call's result cannot be rebuilt in this process: {problem!r}"
-        ) from problem
+        message = f"the call's result cannot be rebuilt in this process: {_detail(problem)}"
+        raise pickle.UnpicklingError(message) from problem
     if ok:
         return cast(object, payload)
     error = cast(BaseException, payload)
     error.__cause__ = RemoteTraceback(text)
-    raise error
+    try:
+        raise error
+    finally:
+        # The traceback refers to this frame: holding the error here would make a cycle
+        # that keeps the caller's frames, and the child's handles in them, until a collection.
+        del error, payload
