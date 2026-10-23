@@ -2,19 +2,14 @@
 
 from __future__ import annotations
 
-import contextlib
 import pickle
 import traceback
 from typing import cast
 
+from ._causes import DETAIL, bounded, exact_text
 from ._text import LIMIT, call_name, cut
 
-# Characters of an exception's text kept in a message built around it; the full text
-# still travels in the chained traceback.
-_DETAIL = 300
-
-# Notes kept on a pickling error (newer Pythons add one per level, quoting keys).
-_NOTES = 10
+SENT = "the call cannot be sent to the child process"
 
 
 class RemoteTraceback(Exception):
@@ -28,58 +23,28 @@ class RemoteTraceback(Exception):
         return self.text
 
 
-def _cut_notes(source: BaseException, target: BaseException) -> None:
-    notes = getattr(source, "__notes__", None)
-    if isinstance(notes, list) and notes:
-        kept = [cut(note) if isinstance(note, str) else "<note>" for note in notes[:_NOTES]]
-        if len(notes) > _NOTES:
-            kept.append(f"... and {len(notes) - _NOTES} more notes")
-        vars(target)["__notes__"] = kept  # what add_note() writes to
-
-
-def _bounded(problem: Exception) -> Exception:
-    """Bound pickle's error, often quoting a value: its text and its notes.
-
-    It is cut in place when its args carry its text. Otherwise (a __str__ of its own,
-    args that cannot be set) a RuntimeError naming its type and quoting it stands in.
-    """
-    try:
-        text = str(problem)
-    except Exception:
-        text = ""
-    try:
-        if len(text) > _DETAIL:
-            problem.args = (cut(text, _DETAIL),)
-            if len(str(problem)) > _DETAIL + 3:
-                raise ValueError("its text does not come from its args")
-        _cut_notes(problem, problem)
-        return problem
-    except Exception:
-        pass
-    name = f"{type(problem).__module__}.{type(problem).__qualname__}"
-    stand_in = RuntimeError(cut(f"{name}: {text}", _DETAIL))
-    with contextlib.suppress(Exception):
-        _cut_notes(problem, stand_in)
-    return stand_in.with_traceback(problem.__traceback__)
-
-
 def unsendable(problem: Exception) -> pickle.PicklingError:
     """The documented error for a call that cannot be pickled, its cause pickle's, bounded.
 
     Raise it with ``raise error from error.__cause__`` outside the handler of problem, so
     the unbounded original is not kept as its context either.
     """
-    cause = _bounded(problem)
+    cause = bounded(problem)
     detail = _detail(cause, LIMIT)
-    error = pickle.PicklingError(f"the call cannot be sent to the child process: {detail}")
+    error = pickle.PicklingError(f"{SENT}: {detail}")
     error.__cause__ = cause
     return error
 
 
-def _detail(exc: BaseException, limit: int = _DETAIL) -> str:
-    try:
-        text = repr(exc)
-    except Exception:
+def too_many(passed: int, limit: int) -> pickle.PicklingError:
+    """The documented error for a call holding more descriptors than a start can pass."""
+    held = f"it holds {passed} descriptors (pipe ends, sockets, two per queue)"
+    return pickle.PicklingError(f"{SENT}: {held} and a forkserver start passes at most {limit}")
+
+
+def _detail(exc: BaseException, limit: int = DETAIL) -> str:
+    text = exact_text(exc, repr)
+    if text is None:
         text = f"<{call_name(type(exc))} whose repr failed>"
     return cut(text, limit)
 
@@ -93,7 +58,7 @@ def pack_error(exc: BaseException) -> bytes:
     except Exception as problem:
         name = f"{type(exc).__module__}.{type(exc).__qualname__}"
         try:
-            message = cut(str(exc), _DETAIL)
+            message = cut(str(exc), DETAIL)
         except Exception:
             message = "<str() failed>"
         stand_in = RuntimeError(f"{cut(name)}: {message} (not picklable: {_detail(problem)})")
@@ -126,4 +91,9 @@ def unpack(data: bytes) -> object:
         return cast(object, payload)
     error = cast(BaseException, payload)
     error.__cause__ = RemoteTraceback(text)
-    raise error
+    try:
+        raise error
+    finally:
+        # The traceback refers to this frame: holding the error here would make a cycle
+        # that keeps the caller's frames, and the child's handles in them, until a collection.
+        del error, payload

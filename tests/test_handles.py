@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import ctypes
 import gc
 import multiprocessing
-import os
 import pickle
 import socket
-import sys
 from collections.abc import Callable, Iterator
 from multiprocessing.connection import Client, Listener
 from multiprocessing.process import BaseProcess
 from typing import Any
 
+import _counting
 import _wire_targets
 import pytest
 
@@ -65,21 +63,6 @@ def _ended(watched: Any) -> bool:
     return False
 
 
-def _handles() -> int:
-    if sys.platform == "win32":
-        from ctypes import wintypes
-
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-        kernel32.GetProcessHandleCount.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
-        count = wintypes.DWORD()
-        assert kernel32.GetProcessHandleCount(kernel32.GetCurrentProcess(), ctypes.byref(count))
-        return count.value
-    if os.path.isdir("/proc/self/fd"):
-        return len(os.listdir("/proc/self/fd"))
-    pytest.skip("no way to count this process's handles here")
-
-
 @pytest.fixture
 def starts(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[BaseProcess]]:
     started: list[BaseProcess] = []
@@ -126,7 +109,7 @@ def test_calls_stopped_before_their_child_loads_leave_no_handle_behind() -> None
         for _ in range(times):
             run(_wire_targets.count, 0.02, args=(1,), mode="process", default="late")
         gc.collect()
-        return _handles()
+        return _counting.handles()
 
     before = short_calls(3)
     assert short_calls(15) - before < 5
@@ -185,7 +168,7 @@ def test_the_objects_beside_an_end_are_pickled_once_before_the_start(
     starts: list[BaseProcess],
 ) -> None:
     reader, writer = _pipe()
-    once = _wire_targets.OnceOnly()
+    once = _wire_targets.OnceThen(TypeError("this object pickles only once"))
     assert run(_wire_targets.write_and_close, 30.0, args=(writer, once), mode="process") == "sent"
     assert reader.recv() == "hello"
     never = _wire_targets.RaisesOnReduce(TypeError("never"))

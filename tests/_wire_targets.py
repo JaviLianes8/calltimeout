@@ -6,7 +6,8 @@ import multiprocessing
 import socket
 import threading
 import time
-from typing import Any
+from multiprocessing.managers import BaseProxy
+from typing import Any, NoReturn
 
 
 def process_name() -> str:
@@ -136,18 +137,37 @@ class Slow:
         return (int, ())
 
 
-class OnceOnly:
-    """Pickles the first time only, then raises the given text."""
+class OnceThen:
+    """Pickles the first time only, then raises the given error, or a new one of a type."""
 
-    def __init__(self, text: str = "this object pickles only once") -> None:
+    def __init__(self, error: BaseException | type[BaseException]) -> None:
         self.pickled = False
-        self.text = text
+        self.error = error
 
     def __reduce__(self) -> tuple[object, ...]:
         if self.pickled:
-            raise TypeError(self.text)
+            # A type gives a new error each time, which then refers to nothing of the call.
+            raise self.error("pickles only once") if isinstance(self.error, type) else self.error
         self.pickled = True
         return (int, (7,))
+
+
+class RefusingProxy(BaseProxy):
+    """A manager proxy by its type, with no manager behind it, whose pickling raises."""
+
+    def __init__(self, error: BaseException) -> None:
+        self.error = error
+
+    def __reduce__(self) -> NoReturn:
+        raise self.error
+
+
+def deliver_each(first: Any, second: Any, sock: socket.socket, shared: Any) -> str:
+    first.send("first")
+    second.send("second")
+    sock.sendall(b"sock")
+    shared.append("shared")
+    return "sent"
 
 
 class OddClass:

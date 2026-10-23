@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from multiprocessing.connection import Connection, wait
 from multiprocessing.process import BaseProcess
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, NoReturn, Protocol, TypeVar, cast
 
 from ._errors import CallCrashed, Expired
 from ._parcel import Parcel, prepickle
@@ -92,6 +92,21 @@ def _stop(process: BaseProcess, *, finished: bool) -> None:
         if process.is_alive():
             process.kill()
         process.join()
+        # Releases its handles now: an error raised from the call can keep this process
+        # object alive in a reference cycle until the next collection.
+        process.close()
+
+
+def _refuse(parcel: Parcel) -> NoReturn:
+    """Raise what the start met pickling the call: the documented error, or the interrupt."""
+    error, parcel.refused = parcel.refused, None
+    try:
+        if isinstance(error, Exception):
+            error = unsendable(error)
+            raise error from error.__cause__
+        raise cast(BaseException, error)  # a KeyboardInterrupt, SystemExit, as it came
+    finally:
+        del error  # no cycle through this frame
 
 
 def _receive(reader: _Reader, ready: Sequence[object]) -> bytes | None:
@@ -132,8 +147,7 @@ def run_in_process(
         started = True
         writer.close()
         if parcel.refused is not None:
-            error = unsendable(parcel.refused)
-            raise error from error.__cause__
+            _refuse(parcel)
         ready = _await(reader, process, deadline)
         if not ready:
             raise Expired

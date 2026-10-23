@@ -129,17 +129,27 @@ def test_a_lock_from_another_context_works_or_raises_the_documented_error() -> N
     assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2
 
 
+START_ERRORS: dict[str, Callable[[str], Exception]] = {
+    "TypeError": TypeError,
+    "ValueError": ValueError,
+    "RuntimeError": RuntimeError,
+    "PicklingError": pickle.PicklingError,
+    "RecursionError": RecursionError,
+}
+
+
 @needs_pickling
+@pytest.mark.parametrize("make", list(START_ERRORS.values()), ids=list(START_ERRORS))
 @pytest.mark.parametrize("lock_first", [True, False], ids=["lock first", "lock last"])
 def test_a_call_that_pickles_for_the_rehearsal_but_not_for_the_start_raises_pickling_error(
-    lock_first: bool,
+    lock_first: bool, make: Callable[[str], Exception]
 ) -> None:
-    lock, once = multiprocessing.Lock(), _wire_targets.OnceOnly()
+    lock, once = multiprocessing.Lock(), _wire_targets.OnceThen(make("pickles only once"))
     args = (lock, once) if lock_first else (once, lock)
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_wire_targets.count, 30.0, args=args, mode="process")
-    assert "this object pickles only once" in str(info.value)
-    assert isinstance(info.value.__cause__, TypeError)
+    assert "pickles only once" in str(info.value)
+    assert type(info.value.__cause__) is type(once.error)
     assert info.value.__context__ in (None, info.value.__cause__)
     for _ in range(3):
         assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2
@@ -147,7 +157,7 @@ def test_a_call_that_pickles_for_the_rehearsal_but_not_for_the_start_raises_pick
 
 @needs_pickling
 def test_the_error_of_a_start_that_cannot_pickle_the_call_is_bounded() -> None:
-    once = _wire_targets.OnceOnly("TOPSECRET-" + "s" * 100_000)
+    once = _wire_targets.OnceThen(TypeError("TOPSECRET-" + "s" * 100_000))
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_wire_targets.count, 30.0, args=(multiprocessing.Lock(), once), mode="process")
     assert len(str(info.value)) <= len(SENT) + 2 + 63

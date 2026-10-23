@@ -42,12 +42,47 @@ def test_the_chained_error_is_cut_after_300_characters_whatever_raised_it(
     assert len(str(info.value)) <= len(SENT) + 2 + 63
 
 
+STAND_IN: dict[str, type[Exception]] = {
+    "args that cannot be set": _hostile_errors.ReadOnlyArgs,
+    "text from __str__": _hostile_errors.LongText,
+}
+
+
+@needs_pickling
+@pytest.mark.parametrize("kind", list(STAND_IN.values()), ids=list(STAND_IN))
+def test_an_error_that_cannot_be_cut_in_place_is_replaced_by_a_runtime_error_naming_it(
+    kind: type[Exception],
+) -> None:
+    bad = _wire_targets.RaisesOnReduce(kind())
+    with pytest.raises(pickle.PicklingError, match=SENT) as info:
+        run(_targets.echo, 30.0, args=(bad,), mode="process")
+    cause = info.value.__cause__
+    assert type(cause) is RuntimeError
+    assert str(cause).startswith(f"{kind.__module__}.{kind.__qualname__}: ")
+    assert len(str(cause)) == 303
+
+
+@needs_pickling
+@pytest.mark.parametrize("size", [300, 301, 400, 599, 5000])
+@pytest.mark.parametrize("args", [1, 2], ids=["one arg", "two args"])
+def test_a_plain_error_is_cut_in_place_after_exactly_300_characters(size: int, args: int) -> None:
+    error = TypeError("x" * size, *range(args - 1))
+    bad = _wire_targets.RaisesOnReduce(error)
+    with pytest.raises(pickle.PicklingError, match=SENT) as info:
+        run(_targets.echo, 30.0, args=(bad,), mode="process")
+    cause = info.value.__cause__
+    assert type(cause) is TypeError  # its own type, kept
+    expected = str(TypeError("x" * size, *range(args - 1)))
+    assert str(cause) == (expected if len(expected) <= 300 else expected[:300] + "...")
+
+
 @needs_pickling
 def test_an_error_whose_str_raises_still_gives_pickling_error() -> None:
     bad = _wire_targets.RaisesOnReduce(_hostile_errors.BadStr("refused"))
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_targets.echo, 30.0, args=(bad,), mode="process")
-    assert "BadStr('refused')" in str(info.value)
+    assert type(info.value.__cause__) is RuntimeError
+    assert "BadStr" in str(info.value)
 
 
 @needs_pickling

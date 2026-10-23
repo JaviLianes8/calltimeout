@@ -141,3 +141,21 @@ def test_a_proxy_of_a_manager_with_its_own_authkey_reaches_the_child() -> None:
 
 def test_an_argument_whose_class_attribute_raises_is_sent_as_it_pickles() -> None:
     assert run(_wire_targets.count, 30.0, args=(_wire_targets.OddClass(),), mode="process") == 1
+
+
+def test_each_end_socket_and_proxy_in_one_call_reaches_its_own_peer() -> None:
+    import socket
+    from multiprocessing.managers import SyncManager
+
+    first_reader, first = multiprocessing.Pipe(duplex=False)
+    second_reader, second = multiprocessing.Pipe(duplex=False)
+    watched, sock = socket.socketpair()
+    watched.settimeout(10.0)
+    with SyncManager() as manager, watched, sock:
+        shared = manager.list()
+        args = (first, second, sock, shared)
+        assert run(_wire_targets.deliver_each, 60.0, args=args, mode="process") == "sent"
+        assert first_reader.poll(10.0) and first_reader.recv() == "first"
+        assert second_reader.poll(10.0) and second_reader.recv() == "second"
+        assert watched.recv(16) == b"sock"
+        assert list(shared) == ["shared"]
