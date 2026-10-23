@@ -143,3 +143,12 @@ def test_a_call_that_pickles_for_the_rehearsal_but_not_for_the_start_raises_pick
     assert info.value.__context__ in (None, info.value.__cause__)
     for _ in range(3):
         assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2
+
+
+@needs_pickling
+def test_the_error_of_a_start_that_cannot_pickle_the_call_is_bounded() -> None:
+    once = _wire_targets.OnceOnly("TOPSECRET-" + "s" * 100_000)
+    with pytest.raises(pickle.PicklingError, match=SENT) as info:
+        run(_wire_targets.count, 30.0, args=(multiprocessing.Lock(), once), mode="process")
+    assert len(str(info.value)) <= len(SENT) + 2 + 63
+    assert len(str(info.value.__cause__)) == 303

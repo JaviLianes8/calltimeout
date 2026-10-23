@@ -137,14 +137,15 @@ class Slow:
 
 
 class OnceOnly:
-    """Pickles the first time only."""
+    """Pickles the first time only, then raises the given text."""
 
-    def __init__(self) -> None:
+    def __init__(self, text: str = "this object pickles only once") -> None:
         self.pickled = False
+        self.text = text
 
     def __reduce__(self) -> tuple[object, ...]:
         if self.pickled:
-            raise TypeError("this object pickles only once")
+            raise TypeError(self.text)
         self.pickled = True
         return (int, (7,))
 
