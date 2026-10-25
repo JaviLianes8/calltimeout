@@ -21,6 +21,7 @@ Progress:
 - [x] Five QA lenses, round 3: every finding fixed (2f962f3 to db26ef1)
 - [x] Five QA lenses, round 4: every finding fixed (726f948 to 388e62b)
 - [x] Lens e, round 5: every surviving mutant pinned or shown equivalent (9f00374, 5b84b46)
+- [x] Five QA lenses, round 6: every finding fixed (f477ccf, 3220523)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
 
 ## Scorecard
@@ -31,7 +32,7 @@ Progress:
 | 2 | `__all__` exact, no private imports in docs | PASS: `CallCrashed`, `CallTimeout`, `Mode`, `run`, `with_timeout`; `tests/test_contract.py` |
 | 3 | Docstrings with runnable examples, doctests | PASS: every public name has a doctest (5, also run from the installed wheel; `Mode`'s section of the package docstring is run by `tests/test_contract.py`, since a docstring on the cached `Literal` would relabel the caller's identical aliases); README and GUIDE examples run as scripts by the tests with their printed output checked |
 | 4 | Typed end to end | PASS: `mypy --strict src tests` for the Windows, Linux and macOS platforms; `py.typed` shipped; a consumer script type-checked against the installed wheel |
-| 5 | Typed, documented, bounded errors | PASS: `CallTimeout` (`TimeoutError`), `CallCrashed` (`RuntimeError`), `TypeError` or `ValueError` before the call starts; quoted values cut at 60 characters, exceptions at 300 (60 in the message for a call that cannot be sent, whose chained pickle error is cut at 300 in place), huge integers described by size |
+| 5 | Typed, documented, bounded errors | PASS: `CallTimeout` (`TimeoutError`), `CallCrashed` (`RuntimeError`), `TypeError` or `ValueError` before the call starts; quoted values cut at 60 characters, exceptions at 300 (60 in the message for a call or a result that cannot be sent or rebuilt, whose chained pickle error is cut at 300 in place), huge integers described by size |
 | 6 | Contract tests of every public name | PASS |
 | 7 | Real ground truth | PASS: 8 CPython and PEP documents fetched with a hash manifest, each fact checked against the running interpreter; pebble 5.2.3 run live as a second implementation |
 | 8 | Real e2e from the wheel | PASS: wheel and sdist built, inspected, installed in throwaway venvs and used from an empty folder; no CLI; nothing on PyPI to upgrade from |
@@ -45,7 +46,7 @@ Progress:
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: 58 author mutants, 57 killed; M36 killed under fork and spawn and unreachable under forkserver |
-| 19 | Five independent QA lenses | Rounds 1 to 4: every finding of the five lenses fixed, at 3309979, at 00f6889 and 6e2c03c, at 2f962f3 to db26ef1, and at 726f948 to 388e62b; round 5: lens e's survivors pinned in 9f00374 and 5b84b46 (see QA lenses); re-verification pending |
+| 19 | Five independent QA lenses | Rounds 1 to 4: every finding of the five lenses fixed, at 3309979, at 00f6889 and 6e2c03c, at 2f962f3 to db26ef1, and at 726f948 to 388e62b; round 5: lens e's survivors pinned in 9f00374 and 5b84b46; round 6: every finding fixed in f477ccf and 3220523 (see QA lenses); re-verification pending |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -209,6 +210,9 @@ pebble, `CALLTIMEOUT_E2E=1`), each on its own: `ruff format --check .`, `ruff ch
 `mypy --strict src`, `mypy --strict src tests` exit 0, and `pytest` 171 passed, 13
 skipped (POSIX only), exit 0. At 4106b53 the static gates exit 0 again on this PC
 (mypy for the Windows, Linux and macOS platforms) and the full gate under WSL (above).
+At 3220523 the static gates exit 0 on this PC and under WSL, and `pytest` passes on every
+interpreter as the round 6 verification below records (the full suite at f477ccf, the two
+files changed since rerun at 3220523).
 
 ## QA lenses (item 19)
 
@@ -477,6 +481,75 @@ Verification:
   3.12.12 and 3.13.2 each 310 passed, 21 skipped; 3.14.2 and 3.14.2 free-threaded each
   311 passed, 20 skipped (POSIX-only and forkserver-only tests); doctests 5 passed on each.
 
+### Round 6, at 7661bda
+
+The five lenses again, each with fresh agents. Lens a ran every doctest and documented
+example on Windows spawn and Linux fork, spawn and forkserver, and 85 to 90 documented
+claims per start method, all passing; lens b re-derived exit codes, deadlines, the
+forkserver descriptor limit and the signal rules from CPython sources and the kernel;
+lens d built the wheel and sdist twice (byte-identical), installed them on CPython 3.10.19
+to 3.14.2 and upgraded from 0.2.0; lens e ran 99 mutants of its own (93 killed, 1
+equivalent). Every finding is fixed in f477ccf (two of its new contracts corrected in 3220523, below); each behaviour fix has a contract that
+fails on 7661bda and passes now, and every behaviour change is in the CHANGELOG.
+
+| Lens | Id | Severity | Finding | Fix | Contract |
+| --- | --- | --- | --- | --- | --- |
+| c | F1 | medium | The errors about a result were not bounded like those about a call: the message quoted 300 characters of pickle's error, which was chained whole (text, notes, chain) into the child's traceback; a result nested 50,000 deep sent back over a million characters on 3.14, and thousands of huge notes, under fork, spent the whole budget formatting | `_wire._about` builds all three documented errors (call not sent, result not sent back, result not rebuilt): pickle's error goes through `bounded` (300 characters, ten notes of 60, nothing chained), the message quotes 60, and the error is raised outside the handler so the original is not its context | `test_result_bounds.py` (a 200,000-character error, 2,000 notes of 5,000 characters, a huge chained context, a 50,000-deep list, a result whose rebuild raises 200,000 characters: message, context and the whole printed chain bounded); `test_bounded_causes.py` now expects 60 quoted characters and the 300-character cut in the child's text |
+| c | F2 | low | The key check iterated the mapping while the call read `dict(kwargs)`, so a mapping whose views disagree (or that changes between reads) passed with a non-`str` key, and the `TypeError` came from inside the call, after a child had started in process mode | `check_call` copies `kwargs` once into a `dict`, checks the keys of that copy and returns it; `run` passes the same copy to the runner | `test_contract_edges.py::test_the_kwargs_checked_are_the_kwargs_the_call_gets` (every mode: a `dict` subclass hiding a key from iteration is refused with our message, no cause and no process started; a mapping that adds a key on its second pass is read once and called with what was checked) |
+| a | A1, A2 | low | Two GUIDE examples failed `mypy --strict` (`inner() -> str` returning `None`, `main() -> str` returning `str \| None`) | Annotated `-> None` and `-> str \| None` | `test_typing.py::test_every_documented_example_passes_strict_type_checking` (all seven README and GUIDE blocks, for win32 and linux) |
+| b | F1 | low | The GUIDE promised the grace period lets atexit handlers run, which fork and forkserver children only do from Python 3.13 | GUIDE and the `_stop` docstring: atexit handlers run where `multiprocessing` runs them (spawn, and fork and forkserver from 3.13) | `test_process.py::test_the_calls_atexit_handlers_run_where_multiprocessing_runs_them` (skipped where they do not run) |
+| d | D1 | low | README (mode table and API note) and the `run` docstring said `fn` and its arguments always pickle; under fork only the result does | Both qualified by start method | docs |
+| c | F3 | low | The GUIDE said the budget covers pickling, without saying pickling runs in the caller and cannot be interrupted | GUIDE, `run` and `run_in_process` docstrings | docs |
+| c | F4 | low | Only resetting `ITIMER_REAL` was documented as cancelling a signal-mode deadline; installing a `SIGALRM` handler (or `SIG_IGN`) does too, and the result is then returned | Documented next to the `ITIMER_REAL` rule | docs |
+| e | S09 | high | Restoring an enclosing timer that fell due as `max(left, 0.0)` (which disarms it) survived | | `test_signal_restore.py`: an enclosing one-shot timer that fell due while the call overran still fires once, and a periodic one stays armed with its interval |
+| e | T03 | medium | Thread mode waiting 0.5 s past the budget survived | | `test_timing_contracts.py::test_thread_mode_raises_within_a_small_margin_of_the_budget` (best of three under budget + 0.1 s) |
+| e | P10 | medium | Process mode sleeping a whole poll interval past the deadline survived | | `test_process_mode_never_sleeps_past_the_deadline` (poll interval raised to 20 s, the timeout still comes before the grace period ends) |
+| e | P08 | low | A result sent as the child exits, seen only through the sentinel, was untested | | `test_a_result_sent_as_the_child_exits_is_returned` (the first wait returns nothing after the child exited) |
+| e | X05 | low | The fallback for a number that cannot be printed was untested | | `test_errors.py::test_a_number_that_cannot_be_printed_is_named_by_its_type` |
+
+Also changed: the `UnpicklingError` of a result whose class the caller cannot import is
+chained from a `RuntimeError` naming `ModuleNotFoundError` (bounded like any non-plain
+error), and `test_regressions.py` says so.
+
+Observations the lenses reported outside their findings, left as they are: the README
+link to `blob/main/GUIDE.md` answers 404 until `release/1.0.0` is merged (lenses a and d);
+under fork, a thread-mode call left running makes later process calls fork a
+multi-threaded process, which CPython warns about (lens d); `CallCrashed.exitcode` is the
+value `multiprocessing` reports, truncated by the OS like any exit status (lens b).
+
+Verification:
+
+- WSL Ubuntu, CPython 3.14.4, fresh clone of f477ccf: `ruff format --check .`,
+  `ruff check .`, `mypy --strict src` and `mypy --strict src tests` exit 0. `pytest` under
+  forkserver, fork and spawn: everything passed but
+  `test_the_notes_of_an_error_about_a_result_are_bounded_and_counted`, which expected
+  1,990 dropped notes where 3.14 has 1,991: pickle 3.14 adds a note of its own (which
+  tuple item failed) to the 2,000 of the error. The new contracts run on the src of
+  7661bda: the five of `test_result_bounds.py` and the three of
+  `test_the_kwargs_checked_are_the_kwargs_the_call_gets` fail, the others pass (they pin
+  behaviour 7661bda already had, against lens e's mutants). Lens e's survivors S09, T03,
+  P10, P08 and X05, each applied alone to f477ccf: all killed.
+- Windows, this PC, fresh clone of f477ccf from GitHub: the wheel and sdist built once and
+  installed per interpreter, the sdist's own suite run with `src` removed,
+  `CALLTIMEOUT_E2E=1`, the fetched documents and pebble 5.2.3, plus the installed
+  package's doctests (5 passed on each). CPython 3.11.5 and 3.13.2 each 324 passed, 22
+  skipped. Two contracts were wrong, not the library: on 3.10.19 the notes contract failed
+  because `traceback` prints notes only from 3.11 (the same skip the other notes tests
+  have); on 3.14.2 and 3.14.2 free-threaded it failed as on Linux; on 3.12.12 the thread
+  timing contract measured 0.187 s for a 0.2 s budget, because `time.monotonic()` there
+  is `GetTickCount64()` with a resolution of 0.015625 s (`time.get_clock_info` on this PC:
+  3.10.19, 3.11.5 and 3.12.12 report `GetTickCount64()`, 3.13.2 and 3.14.2
+  `QueryPerformanceCounter()` at 1e-07 s).
+- 3220523 corrects both: the notes contract skips before 3.11 and expects the number of
+  notes pickle itself leaves on this interpreter (2,000 or 2,001) minus the ten kept; the
+  timing contract allows one tick of the clock below the budget. The GUIDE says that
+  thread and process mode are as precise as `time.monotonic()`, and what it is on
+  Windows. Both files rerun at 3220523: on Windows with CPython 3.10.19 (7 passed, 1
+  skipped), 3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2 free-threaded (8 passed each); on
+  WSL under forkserver, fork and spawn (8 passed each); on the src of 7661bda the five
+  contracts of `test_result_bounds.py` still fail; T03 still killed.
+- The gates on this PC at 3220523 (CPython 3.13.2, ruff 0.17.0, mypy 2.4.0): all exit 0.
+
 ## Disputed findings
 
-None in rounds 1 to 5.
+None in rounds 1 to 6.
