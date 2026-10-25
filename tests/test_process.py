@@ -146,3 +146,12 @@ def test_a_nested_process_timeout_propagates_through_the_default() -> None:
     with pytest.raises(CallTimeout) as info:
         run(_targets.nested_timeout, 60.0, mode="process", default="outer default")
     assert info.value.timeout == 0.05
+
+
+def test_the_calls_atexit_handlers_run_where_multiprocessing_runs_them(tmp_path: Path) -> None:
+    if multiprocessing.get_start_method() != "spawn" and sys.version_info < (3, 13):
+        pytest.skip("fork and forkserver children run exit functions from Python 3.13")
+    marker = tmp_path / "marker"
+    assert run(_targets.writes_at_exit, 30.0, args=(str(marker),), mode="process") == "returned"
+    # The child had its grace period to exit on its own, so its exit functions have run.
+    assert marker.read_text(encoding="utf-8") == "ran"

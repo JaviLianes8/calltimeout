@@ -50,8 +50,8 @@ def _is_coroutine_function(fn: object) -> bool:
         return False
 
 
-def check_call(fn: object, args: object, kwargs: object) -> None:
-    """Reject arguments the call could never run with, before anything is started."""
+def check_call(fn: object, args: object, kwargs: object) -> dict[str, object]:
+    """Reject arguments the call could never run with; return kwargs as the call gets them."""
     if not callable(fn):
         raise TypeError(f"fn must be callable, not {type_name(fn)}")
     if _is_coroutine_function(fn):
@@ -59,10 +59,16 @@ def check_call(fn: object, args: object, kwargs: object) -> None:
         raise TypeError(f"{call_name(fn)} is a coroutine function: {_ASYNC_HINT}")
     if not isinstance(args, tuple):
         raise TypeError(f"args must be a tuple, not {type_name(args)}")
-    if kwargs is not None and not isinstance(kwargs, Mapping):
+    if kwargs is None:
+        return {}
+    if not isinstance(kwargs, Mapping):
         raise TypeError(f"kwargs must be a mapping, not {type_name(kwargs)}")
-    if kwargs is not None and not all(isinstance(key, str) for key in kwargs):
+    # Read once and checked as read: a mapping whose views disagree, or change between
+    # reads, cannot pass the check with one set of keys and call with another.
+    copy = dict(kwargs)
+    if not all(isinstance(key, str) for key in copy):
         raise TypeError("kwargs keys must be strings")
+    return copy
 
 
 def check_mode(mode: object, modes: Iterable[str]) -> str:

@@ -37,3 +37,22 @@ def test_the_exceptions_fit_existing_except_clauses() -> None:
 def test_messages_name_the_numbers() -> None:
     assert str(CallTimeout(1.5)) == "call did not finish within 1.5 seconds"
     assert "code 3" in str(CallCrashed(3))
+
+
+class _ShyFloat(float):
+    def __str__(self) -> str:
+        raise RuntimeError("no")
+
+
+class _ShyInt(int):
+    def __str__(self) -> str:
+        raise RuntimeError("no")
+
+
+def test_a_number_that_cannot_be_printed_is_named_by_its_type() -> None:
+    assert str(CallTimeout(_ShyFloat(1.5))) == (
+        "call did not finish within a _ShyFloat that cannot be shown seconds"
+    )
+    assert str(CallCrashed(_ShyInt(3))) == (
+        "the call's process exited with code a _ShyInt that cannot be shown before returning"
+    )

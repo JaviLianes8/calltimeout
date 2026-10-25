@@ -96,11 +96,13 @@ def test_exactly_300_characters_of_the_chained_error_are_kept() -> None:
     assert not cause[:300].endswith("...")
 
 
-def test_exactly_300_characters_of_a_results_pickling_error_are_kept() -> None:
+def test_exactly_60_characters_of_a_results_pickling_error_are_quoted() -> None:
     with pytest.raises(pickle.PicklingError) as info:
         run(_wire_targets.unpicklable_with_text, 30.0, args=(1000,), mode="process")
     prefix = "the call's result cannot be sent back: "
     message = str(info.value)
     assert message.startswith(prefix)
-    assert len(message) == len(prefix) + 303, message
+    assert len(message) == len(prefix) + 63, message
     assert message.endswith("x...")
+    # The child's cause, printed in the traceback text sent along, is cut after 300.
+    assert "ValueError: " + "x" * 300 + "...\n" in str(info.value.__cause__)

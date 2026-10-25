@@ -76,8 +76,9 @@ def run(
 
     ``mode`` picks the mechanism. ``"thread"`` (the default) runs fn in a daemon thread
     and stops waiting on overrun, but cannot stop the call itself. ``"process"`` runs fn
-    in a child process that is terminated on overrun; fn, its arguments and its result
-    must pickle, and a child that dies without a result raises ``CallCrashed``.
+    in a child process that is terminated on overrun; its result must pickle, and so must
+    fn and its arguments under the spawn and forkserver start methods (fork pickles only
+    the result). A child that dies without a result raises ``CallCrashed``.
     ``"signal"`` (POSIX, main thread only) raises ``CallTimeout`` inside fn.
 
     ``timeout`` is a number of seconds (an int, float or other real number; not a bool,
@@ -85,9 +86,10 @@ def run(
     under 1 ms in signal mode. When the budget runs out ``CallTimeout`` is raised, or
     ``default`` is returned if one is given. An exception raised by fn reaches the
     caller, and a ``CallTimeout`` from a nested call inside fn always propagates. Bad
-    arguments raise ``TypeError`` or ``ValueError`` before anything starts; in process
-    mode a call that cannot be pickled raises ``pickle.PicklingError`` before any
-    process starts.
+    arguments raise ``TypeError`` or ``ValueError`` before anything starts. In process
+    mode under spawn and forkserver a call that cannot be pickled raises
+    ``pickle.PicklingError`` before the call runs; pickling happens in the caller, counts
+    against the budget and is not interrupted.
 
     >>> import math, time
     >>> from calltimeout import CallTimeout, run
@@ -104,7 +106,7 @@ def run(
     2432902008176640000
     """
     seconds = check_timeout(timeout)
-    check_call(fn, args, kwargs)
+    keywords = check_call(fn, args, kwargs)
     name = check_mode(mode, RUNNERS)
     runner = RUNNERS[name]
     if name == "signal":
@@ -112,7 +114,7 @@ def run(
     try:
         if seconds == 0:
             raise Expired
-        return runner(fn, seconds, args, {} if kwargs is None else dict(kwargs))
+        return runner(fn, seconds, args, keywords)
     except Expired as expired:
         if not isinstance(default, _Unset):
             return default

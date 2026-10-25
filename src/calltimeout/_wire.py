@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import pickle
 import traceback
-from typing import cast
+from typing import TypeVar, cast
 
 from ._causes import DETAIL, bounded, exact_text
 from ._text import LIMIT, call_name, cut
 
 SENT = "the call cannot be sent to the child process"
+SENT_BACK = "the call's result cannot be sent back"
+REBUILT = "the call's result cannot be rebuilt in this process"
+
+E = TypeVar("E", bound=pickle.PickleError)
 
 
 class RemoteTraceback(Exception):
@@ -23,17 +27,21 @@ class RemoteTraceback(Exception):
         return self.text
 
 
-def unsendable(problem: Exception) -> pickle.PicklingError:
-    """The documented error for a call that cannot be pickled, its cause pickle's, bounded.
+def _about(kind: type[E], what: str, problem: Exception) -> E:
+    """A documented pickling error quoting pickle's, which is bounded and chained as its cause.
 
     Raise it with ``raise error from error.__cause__`` outside the handler of problem, so
     the unbounded original is not kept as its context either.
     """
     cause = bounded(problem)
-    detail = _detail(cause, LIMIT)
-    error = pickle.PicklingError(f"{SENT}: {detail}")
+    error = kind(f"{what}: {_detail(cause, LIMIT)}")
     error.__cause__ = cause
     return error
+
+
+def unsendable(problem: Exception) -> pickle.PicklingError:
+    """The documented error for a call that cannot be pickled (see _about)."""
+    return _about(pickle.PicklingError, SENT, problem)
 
 
 def too_many(passed: int, limit: int) -> pickle.PicklingError:
@@ -71,24 +79,31 @@ def pack_result(value: object) -> bytes:
     try:
         return pickle.dumps((True, value, ""))
     except Exception as problem:
-        try:
-            # Raised from the problem, so the traceback text sent along shows where
-            # pickling failed (and the notes newer Pythons add about which item).
-            message = f"the call's result cannot be sent back: {_detail(problem)}"
-            raise pickle.PicklingError(message) from problem
-        except pickle.PicklingError as error:
-            return pack_error(error)
+        error = _about(pickle.PicklingError, SENT_BACK, problem)
+    try:
+        # Raised, so the traceback text sent along shows where pickling failed (the
+        # bounded cause keeps its frames and the notes newer Pythons add about which item).
+        raise error from error.__cause__
+    except pickle.PicklingError as raised:
+        return pack_error(raised)
+
+
+def _load(data: bytes) -> tuple[bool, object, str]:
+    try:
+        return cast("tuple[bool, object, str]", pickle.loads(data))
+    except Exception as problem:
+        error = _about(pickle.UnpicklingError, REBUILT, problem)
+    try:
+        raise error from error.__cause__
+    finally:
+        del error  # no cycle through this frame
 
 
 def unpack(data: bytes) -> object:
     """Return the child's result or raise its exception with the child's traceback."""
-    try:
-        ok, payload, text = pickle.loads(data)
-    except Exception as problem:
-        message = f"the call's result cannot be rebuilt in this process: {_detail(problem)}"
-        raise pickle.UnpicklingError(message) from problem
+    ok, payload, text = _load(data)
     if ok:
-        return cast(object, payload)
+        return payload
     error = cast(BaseException, payload)
     error.__cause__ = RemoteTraceback(text)
     try:

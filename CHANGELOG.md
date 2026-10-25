@@ -25,16 +25,30 @@ on `main`.
 - A real-number timeout whose conversion to `float` fails raises `TypeError` (the
   conversion's own error is chained as the cause).
 - Error messages are bounded: a quoted value or name is cut after 60 characters, a
-  quoted exception after 300 (60 for pickle's error about a call that cannot be sent,
-  which can quote an argument), and an integer of more than 64 bits is described by its
-  size instead of printed.
+  quoted exception after 300 (60 for pickle's error about a call or a result that cannot
+  be sent, or a result that cannot be rebuilt, which can quote an argument or the
+  result), and an integer of more than 64 bits is described by its size instead of
+  printed.
+- `kwargs` is read once into a plain `dict` in the caller, before the call starts, and its
+  keys are checked on that copy, so the call gets exactly the keys that were checked. A
+  mapping whose iteration hides keys that `keys()` returns, or one that changes between
+  reads, got past the check and failed inside the call (in process mode, after a child
+  had started) with a `TypeError` from Python itself.
 - Process mode: the budget also covers pickling the call and starting the child, and a
   call whose pickling used it up is never started. A child that cannot load the call
   (a function the child cannot import under spawn or forkserver) reports that error
   with its traceback instead of a crash with exit code 1. A child that dies while
   sending its result raises `CallCrashed`, and waiting for a crashed child's exit code
   never runs past the budget. A result that cannot be pickled raises
-  `pickle.PicklingError` with the child's traceback of the failure.
+  `pickle.PicklingError` with the child's traceback of the failure, and a result that
+  cannot be rebuilt raises `pickle.UnpicklingError`; pickle's error behind either is
+  bounded as for a call that cannot be sent (below), in the child's traceback text for a
+  result that cannot be sent back. It was chained whole: a result nested 50,000 lists
+  deep sent back a traceback of over a million characters on Python 3.14, and an
+  argument with thousands of huge notes, returned as the result under fork, spent the
+  whole budget formatting it and ended in `CallTimeout`. The `UnpicklingError` of a
+  result whose class the caller cannot import is now chained from a `RuntimeError` naming
+  `ModuleNotFoundError`.
 - Process mode: a call whose function or arguments cannot be pickled raises
   `pickle.PicklingError` before any process starts, chained from pickle's own error
   (which was raised as it was, a different type on each Python version). That error is

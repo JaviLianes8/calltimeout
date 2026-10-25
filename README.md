@@ -62,7 +62,7 @@ The trade-off is the whole point of the library, so it is stated plainly:
 |---|---|---|---|
 | Stops a runaway call | No: it keeps running in a daemon thread | Yes: terminated, and killed if still alive 1 second later | Python code and blocking system calls: yes. A long call inside C: once it returns |
 | Where it works | Everywhere | Everywhere | POSIX, main thread only |
-| Pickling | Not needed | `fn`, its arguments and its result | Not needed |
+| Pickling | Not needed | The result always; `fn` and its arguments under spawn and forkserver | Not needed |
 | Cost | A thread | A new process, whose start counts against the budget | A timer |
 | Context variables | A copy of the caller's, like `asyncio.to_thread` | A copy under fork, the defaults under spawn and forkserver; changes never come back | Shared: same thread |
 
@@ -99,9 +99,9 @@ in depth, every error and its cause, nesting, and use from async code.
 | `CallCrashed` | A `RuntimeError` raised in process mode when the child dies without a result; `.exitcode` |
 | `Mode` | `Literal["thread", "process", "signal"]`, for annotating your own wrappers |
 
-Bad arguments raise `TypeError` or `ValueError` before anything starts, and in process
-mode a call that cannot be pickled raises `pickle.PicklingError`, also before the call
-runs. The
+Bad arguments raise `TypeError` or `ValueError` before anything starts. In process mode
+under the spawn and forkserver start methods, a call that cannot be pickled raises
+`pickle.PicklingError` before the call runs (fork pickles only the result). The
 [CHANGELOG](https://github.com/JaviLianes8/calltimeout/blob/main/CHANGELOG.md) lists what
 changed in each release; from 1.0.0 on the API follows Semantic Versioning.
 

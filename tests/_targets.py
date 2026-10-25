@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import os
 import signal
 import sys
@@ -176,3 +177,13 @@ def kill_self(signum: int) -> None:
 def nested_pids(depth: int) -> list[int]:
     # Each level calls the decorated function again from inside its own child.
     return [os.getpid(), *(nested_pids(depth - 1) if depth else [])]
+
+
+def keywords(**kwargs: object) -> dict[str, object]:
+    return kwargs
+
+
+def writes_at_exit(marker: str) -> str:
+    # Registered by the call itself, so it runs only if the child runs its exit functions.
+    atexit.register(touch, marker)
+    return "returned"

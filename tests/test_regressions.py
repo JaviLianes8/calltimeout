@@ -46,7 +46,11 @@ def test_an_interrupt_during_the_grace_period_still_ends_the_child(
 def test_a_result_the_parent_cannot_rebuild_is_a_clear_error() -> None:
     with pytest.raises(pickle.UnpicklingError, match="cannot be rebuilt") as info:
         run(_targets.child_only_result, 30.0, mode="process")
-    assert isinstance(info.value.__cause__, ModuleNotFoundError)
+    # Bounded like the error about a call that cannot be sent: this type, which keeps its
+    # text outside its args, is replaced by a RuntimeError naming it.
+    cause = info.value.__cause__
+    assert type(cause) is RuntimeError
+    assert str(cause) == "builtins.ModuleNotFoundError: No module named 'ghost_module'"
 
 
 def test_the_decorator_works_when_assigned_to_another_name() -> None:

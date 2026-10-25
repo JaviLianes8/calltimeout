@@ -28,7 +28,7 @@ import time
 from calltimeout import CallTimeout, run
 
 
-def inner() -> str:
+def inner() -> None:
     return run(time.sleep, 0.05, args=(10,))
 
 
@@ -51,9 +51,13 @@ transaction. Use thread mode for calls that end on their own, eventually.
 
 The call runs in a child process that is terminated when the budget runs out (SIGTERM on
 POSIX, `TerminateProcess` on Windows), and killed if it is still alive 1 second later.
-The budget covers pickling the call and starting the child.
+The budget covers pickling the call and starting the child. Pickling runs in the caller
+and is not interrupted: a slow `__reduce__` overruns the budget by as long as it takes
+(and one that never returns blocks `run`), but a call whose pickling used up the budget
+is never started.
 
-- `fn`, its arguments and its result cross the process boundary, so they must pickle.
+- `fn`, its arguments and its result cross the process boundary, so they must pickle
+  (under fork only the result is pickled, see below).
   Targets must be importable: define them at module level, and guard the entry point of
   a script with `if __name__ == "__main__":` as `multiprocessing` requires. Locks, queues,
   pipe ends, sockets, manager proxies and other `multiprocessing` objects can be passed as
@@ -86,8 +90,10 @@ The budget covers pickling the call and starting the child.
   call raises `SystemExit` in the caller like any other exception.
 - A result that cannot be pickled raises `pickle.PicklingError` at once, and one the
   parent cannot rebuild raises `pickle.UnpicklingError`.
-- After the result arrives the child gets up to 1 second to shut down on its own (atexit
-  handlers, non-daemon threads) before it is terminated.
+- After the result arrives the child gets up to 1 second to shut down on its own before
+  it is terminated: its non-daemon threads finish, and its atexit handlers run where
+  `multiprocessing` runs them in a child (under spawn, and under fork and forkserver from
+  Python 3.13).
 - Processes started by the call itself are not stopped with it.
 
 ```python
@@ -133,8 +139,10 @@ interrupted once it returns to Python.
   starting it.
 - Timers already armed with `setitimer` or `alarm` keep their schedule and their handler
   still runs when due (up to 1 ms late, by the rule above), so signal-mode calls can be
-  nested; a call that resets `ITIMER_REAL` itself cancels the deadline. A `SIGALRM`
-  handler installed outside Python is refused, because it could not be restored.
+  nested. A call that resets `ITIMER_REAL` itself, or installs its own `SIGALRM` handler
+  (`SIG_IGN` included, as an alarm-based helper may), cancels the deadline: its result is
+  then returned even if the budget ran out. A `SIGALRM` handler installed outside Python
+  is refused, because it could not be restored.
 
 ```python
 import sys
@@ -198,7 +206,9 @@ print(lookup("id"))  # None
 Both exceptions keep their attribute through pickle and copy, so they can cross process
 boundaries themselves. Messages quote at most 60 characters of any value you passed, so
 a huge argument never ends up in a log. The error pickle raised, chained as the cause of
-a `PicklingError` for a call, can quote more: its text is cut after 300 characters, and
+the `PicklingError` for a call or a result that cannot be sent, or of the
+`UnpicklingError` for a result that cannot be rebuilt (sent back inside the child's
+traceback for a result), can quote more: its text is cut after 300 characters, and
 only its first ten notes are kept, each cut after 60 characters, then a count of the rest.
 That is done in place for the plain errors pickle raises (`TypeError`, `ValueError`,
 `RuntimeError`, `AttributeError`, `RecursionError`, `pickle.PicklingError` and a few
@@ -220,7 +230,7 @@ import time
 from calltimeout import run
 
 
-async def main() -> str:
+async def main() -> str | None:
     return await asyncio.to_thread(
         run, time.sleep, 0.5, args=(60,), mode="process", default="stopped"
     )

@@ -82,7 +82,11 @@ def _exits_within(process: BaseProcess, seconds: float) -> bool:
 
 
 def _stop(process: BaseProcess, *, finished: bool) -> None:
-    """End the child: a finished one first gets to exit on its own (atexit, flushes)."""
+    """End the child: a finished one first gets to exit on its own.
+
+    That lets its non-daemon threads finish, and its atexit handlers run where
+    multiprocessing runs them in a child (spawn, and fork and forkserver from 3.13).
+    """
     try:
         if not (finished and _exits_within(process, GRACE)) and process.is_alive():
             process.terminate()
@@ -128,10 +132,11 @@ def run_in_process(
 ) -> T:
     """Run fn in a child process, terminating it if it overruns the budget.
 
-    Unlike thread mode this truly stops the work on timeout, but fn, its arguments
-    and its result must be picklable so they can cross the process boundary. A child
-    that exits without a result raises CallCrashed as soon as it is gone. The budget
-    covers pickling the call and starting the child.
+    Unlike thread mode this truly stops the work on timeout, but the result, and under
+    spawn and forkserver fn and its arguments, must be picklable so they can cross the
+    process boundary. A child that exits without a result raises CallCrashed as soon as
+    it is gone. The budget covers pickling the call and starting the child; pickling runs
+    here and is not interrupted, so only the check after it can stop the start.
     """
     deadline = time.monotonic() + timeout
     ctx = multiprocessing.get_context()
