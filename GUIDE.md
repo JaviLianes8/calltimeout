@@ -47,6 +47,11 @@ clock keeps running after `run` has raised, until it returns or the process exit
 threads are stopped abruptly at shutdown, so do not leave one holding a file or a
 transaction. Use thread mode for calls that end on their own, eventually.
 
+Thread and process mode measure the budget with `time.monotonic()`, so they are as precise
+as that clock, whose resolution `time.get_clock_info("monotonic")` reports. On Windows it
+is `GetTickCount64()`, about 15.6 ms, up to Python 3.12, and `QueryPerformanceCounter()`
+from 3.13.
+
 ## Process mode
 
 The call runs in a child process that is terminated when the budget runs out (SIGTERM on

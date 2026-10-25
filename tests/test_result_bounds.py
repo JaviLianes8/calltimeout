@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+import sys
 import time
 import traceback
 
@@ -42,12 +43,22 @@ def test_a_huge_error_about_a_result_is_quoted_briefly_and_chained_cut() -> None
     assert len(_printed(error)) < PRINTED
 
 
+def _notes_pickle_leaves(value: object) -> int:
+    # Python 3.14 adds a note of its own (which item failed) to the 2,000 of the error.
+    with pytest.raises(ValueError) as info:
+        pickle.dumps((True, value, ""))
+    return len(getattr(info.value, "__notes__", []))
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="traceback prints notes from 3.11")
 def test_the_notes_of_an_error_about_a_result_are_bounded_and_counted() -> None:
     started = time.monotonic()
+    notes = _notes_pickle_leaves(_result_targets.noted_unpicklable(2_000, 5_000))
+    assert notes in (2_000, 2_001), notes
     error = _sent_back_error(_result_targets.noted_unpicklable, 2_000, 5_000)
     printed = _printed(error)
     assert len(printed) < PRINTED, len(printed)
-    assert "... and 1990 more notes" in printed
+    assert f"... and {notes - 10} more notes" in printed
     assert time.monotonic() - started < 30.0
 
 

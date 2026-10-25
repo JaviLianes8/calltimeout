@@ -25,8 +25,10 @@ def test_thread_mode_raises_within_a_small_margin_of_the_budget() -> None:
             elapsed.append(time.monotonic() - started)
     finally:
         release.set()
-    # The best of three, so a busy machine cannot fail it; any added wait still shows.
-    assert 0.2 <= min(elapsed) < 0.3, elapsed
+    # The best of three, so a busy machine cannot fail it; any added wait still shows. The
+    # budget is read with time.monotonic(), which ticks every 15.6 ms on Windows before 3.13.
+    tick = time.get_clock_info("monotonic").resolution
+    assert 0.2 - tick <= min(elapsed) < 0.3, elapsed
 
 
 def test_process_mode_never_sleeps_past_the_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
