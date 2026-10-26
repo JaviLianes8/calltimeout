@@ -7,12 +7,13 @@ import os
 import pickle
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import _targets
 import pytest
 
-from calltimeout import CallCrashed, CallTimeout, _process, _wire, run
+from calltimeout import CallCrashed, CallTimeout, RemoteTraceback, _process, run
 
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM is POSIX")
 
@@ -46,8 +47,13 @@ def test_an_exception_comes_back_with_the_childs_traceback() -> None:
     with pytest.raises(ValueError, match="boom") as info:
         run(_targets.boom, 30.0, mode="process")
     cause = info.value.__cause__
-    assert isinstance(cause, _wire.RemoteTraceback)
+    assert isinstance(cause, RemoteTraceback)
     assert 'raise ValueError("boom")' in str(cause)
+    # Shown and pickled under the package name, never the private module defining it.
+    shown = "".join(traceback.format_exception(type(info.value), info.value, None))
+    assert "calltimeout.RemoteTraceback: Traceback (most recent call last):" in shown
+    assert "_wire" not in shown
+    assert b"calltimeout._" not in pickle.dumps(cause)
 
 
 def test_a_child_that_dies_is_reported_at_once_as_a_crash() -> None:

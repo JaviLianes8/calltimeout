@@ -143,3 +143,34 @@ class BadStrArg:
 
 class NoteList(list[object]):
     """A list subclass, which traceback prints as notes but is not a plain list."""
+
+
+class RaisingModule(type):
+    """Its classes raise when asked for their module, which traceback and pickle both read."""
+
+    def __getattribute__(cls, name: str) -> object:
+        if name == "__module__":
+            raise ZeroDivisionError(f"{name} refused")
+        return super().__getattribute__(name)
+
+
+class ModuleErr(Exception, metaclass=RaisingModule):
+    """An error whose traceback cannot be formatted and which cannot be pickled."""
+
+
+def raise_module_err() -> None:
+    raise ModuleErr("boom")
+
+
+class LyingUnpicklable(Exception):
+    """Cannot be rebuilt (it takes two arguments), and its long text claims to be empty."""
+
+    def __init__(self, first: str, second: str) -> None:
+        super().__init__(first)
+
+    def __str__(self) -> str:
+        return LyingStr("SECRET-" + "U" * 100_000)
+
+
+def raise_lying_unpicklable() -> None:
+    raise LyingUnpicklable("x", "y")

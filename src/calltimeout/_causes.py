@@ -70,7 +70,8 @@ def _cut_notes(source: BaseException, target: BaseException) -> None:
         own["__notes__"] = kept  # what add_note() writes to
 
 
-def _type_name(problem: BaseException) -> str:
+def full_type_name(problem: BaseException) -> str:
+    """module.qualname of problem's type, or a fixed text when either cannot be read."""
     kind = type(problem)
     try:
         return f"{kind.__module__}.{kind.__qualname__}"
@@ -98,7 +99,7 @@ def bounded(problem: Exception) -> Exception:
             return problem
         except Exception:
             pass  # a plain type does not fail here; the stand-in is the fallback
-    stand_in = RuntimeError(cut(f"{_type_name(problem)}: {shown}", DETAIL))
+    stand_in = RuntimeError(cut(f"{full_type_name(problem)}: {shown}", DETAIL))
     with contextlib.suppress(Exception):
         _cut_notes(problem, stand_in)
     with contextlib.suppress(Exception):

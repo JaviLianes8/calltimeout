@@ -4,6 +4,8 @@
   SIGALRM timer; ``with_timeout`` does the same as a decorator that keeps the signature.
 - ``CallTimeout`` (a ``TimeoutError``) is raised when the budget runs out, and
   ``CallCrashed`` (a ``RuntimeError``) when a process-mode child dies without a result.
+- ``RemoteTraceback`` is the cause chained to an exception from a process-mode call: its
+  text is the child's traceback.
 - ``Mode`` is the ``Literal`` type of the three mechanism names, for annotating your
   own wrappers, so type checkers reject any other name.
 
@@ -28,7 +30,7 @@ Mode
 
 from ._api import Mode, run
 from ._decorator import with_timeout
-from ._errors import CallCrashed, CallTimeout
+from ._errors import CallCrashed, CallTimeout, RemoteTraceback
 
 __version__ = "1.0.0"
 
@@ -36,5 +38,6 @@ __version__ = "1.0.0"
 # pickle never depends on the private module that defines them.
 CallCrashed.__module__ = __name__
 CallTimeout.__module__ = __name__
+RemoteTraceback.__module__ = __name__
 
-__all__ = ["CallCrashed", "CallTimeout", "Mode", "run", "with_timeout"]
+__all__ = ["CallCrashed", "CallTimeout", "Mode", "RemoteTraceback", "run", "with_timeout"]

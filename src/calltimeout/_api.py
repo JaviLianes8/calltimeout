@@ -89,7 +89,8 @@ def run(
     arguments raise ``TypeError`` or ``ValueError`` before anything starts. In process
     mode under spawn and forkserver a call that cannot be pickled raises
     ``pickle.PicklingError`` before the call runs; pickling happens in the caller, counts
-    against the budget and is not interrupted.
+    against the budget and is not interrupted. Rebuilding the result also happens in the
+    caller, after the child sent it: it is not counted against the budget, nor interrupted.
 
     >>> import math, time
     >>> from calltimeout import CallTimeout, run

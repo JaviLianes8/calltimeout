@@ -136,7 +136,8 @@ def run_in_process(
     spawn and forkserver fn and its arguments, must be picklable so they can cross the
     process boundary. A child that exits without a result raises CallCrashed as soon as
     it is gone. The budget covers pickling the call and starting the child; pickling runs
-    here and is not interrupted, so only the check after it can stop the start.
+    here and is not interrupted, so only the check after it can stop the start. The result
+    is rebuilt here too, once the child has sent it: outside the budget, not interrupted.
     """
     deadline = time.monotonic() + timeout
     ctx = multiprocessing.get_context()

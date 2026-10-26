@@ -14,6 +14,13 @@ Versioning from this release on. calltimeout was never published before 1.0.0, a
 0.1.0 and 0.2.0 were never tagged; the changes below are against 0.2.0, commit 9b6975c
 on `main`.
 
+### Added
+
+- `RemoteTraceback`, the cause chained to an exception raised by a process-mode call,
+  whose text (`.text`) is the child's traceback, is public and shown and pickled as
+  `calltimeout.RemoteTraceback`. It was a private class, shown in every such traceback
+  as `calltimeout._wire.RemoteTraceback`.
+
 ### Changed
 
 - A `mode` that is not a `str` raises `TypeError` (it raised `ValueError`); an unknown
@@ -24,11 +31,19 @@ on `main`.
   extra attributes (such as notes) through pickle and copy.
 - A real-number timeout whose conversion to `float` fails raises `TypeError` (the
   conversion's own error is chained as the cause).
+- A negative timeout too large for a `float` (`-10**400`) raises "timeout must not be
+  negative"; it was reported as above `threading.TIMEOUT_MAX`.
 - Error messages are bounded: a quoted value or name is cut after 60 characters, a
   quoted exception after 300 (60 for pickle's error about a call or a result that cannot
   be sent, or a result that cannot be rebuilt, which can quote an argument or the
   result), and an integer of more than 64 bits is described by its size instead of
   printed.
+  A name or text that is a `str` subclass is measured as a plain `str`, so one that lies
+  about its length is cut too (a type or function name of a million characters went whole
+  into argument errors, the coroutine error, thread and process names, and the
+  `RuntimeError` standing in for a child's unpicklable error). A type whose name lookup
+  raises, or gives something other than text, is named `<unnamed type>` (or
+  `<unnamed callable>`) instead of that error escaping from `run`.
 - `kwargs` is read once into a plain `dict` in the caller, before the call starts, and its
   keys are checked on that copy, so the call gets exactly the keys that were checked. A
   mapping whose iteration hides keys that `keys()` returns, or one that changes between
@@ -68,7 +83,8 @@ on `main`.
   stopped before it runs anything; a `KeyboardInterrupt` or `SystemExit` raised there is
   raised as it is, once that child is stopped, instead of escaping half way through the
   start, which on Windows could break later calls passing pipe ends. Under forkserver, a
-  call holding more than 248 descriptors (pipe ends, sockets, two per queue), more than
+  call holding more than 248 descriptors (pipe ends, sockets, two per queue, one per block
+  of shared memory behind `Value` and `Array` objects, all named in the message), more than
   one message to the fork server carries, raises `pickle.PicklingError` before any
   process starts instead of an undocumented `OSError` or `ValueError` from the start. An
   argument whose pickling raised `NotImplementedError` (a pool), `RecursionError` or a
@@ -93,6 +109,11 @@ on `main`.
 - `with_timeout` in process mode sends a callable that pickles by value (a
   `functools.partial`, a callable object) as it is, as `run` does; it failed with
   `AttributeError` under spawn and forkserver.
+- `with_timeout` in process mode works under a `classmethod` under spawn and forkserver
+  (the wrapper is sent through its class); it raised `pickle.PicklingError`.
+- Process mode: a child error whose type's own attributes raise (its traceback cannot be
+  formatted, its type cannot be named or pickled) arrives as a `RuntimeError` quoting its
+  text; the child crashed with exit code 1 and `run` raised `CallCrashed`.
 - A callable whose `__getattr__` raises something other than `AttributeError` is run
   like any other; that error escaped from the coroutine check in `run` and
   `with_timeout`.
@@ -108,6 +129,12 @@ on `main`.
   system call blocked again, so a blocking call overran by its whole length.
 - Signal mode: a timer tick that lands after the call has finished can no longer re-arm
   the timer.
+- Signal mode: an interval timer that was already running keeps its own schedule. Each
+  tick due during a call was counted from when it ran instead of when it was due, so up
+  to 1 ms of lateness per tick added up and ticks were lost (400 calls of 5 ms under a
+  10 ms timer: about 10 ticks lost, the last 120 to 130 ms late). On Linux a timer read
+  in the instant between a tick and its delivery shows no time left, and the call then
+  left it disarmed for good; it is now kept.
 - Thread mode measures the budget from the start of `run`, including starting the thread.
 - The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
   only exists from Python 3.11.

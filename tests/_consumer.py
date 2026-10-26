@@ -12,7 +12,7 @@ import time
 from typing import get_args
 
 import calltimeout
-from calltimeout import CallCrashed, CallTimeout, Mode, run, with_timeout
+from calltimeout import CallCrashed, CallTimeout, Mode, RemoteTraceback, run, with_timeout
 
 
 @with_timeout(30.0, mode="process")
@@ -39,6 +39,7 @@ if __name__ == "__main__":
         "CallCrashed",
         "CallTimeout",
         "Mode",
+        "RemoteTraceback",
         "run",
         "with_timeout",
     ]
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     try:
         run(explode, 30.0, mode="process")
     except KeyError as exc:
+        assert isinstance(exc.__cause__, RemoteTraceback)
         assert "raise KeyError" in str(exc.__cause__)
     else:
         raise AssertionError("child error not raised")

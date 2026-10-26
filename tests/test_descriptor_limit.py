@@ -11,7 +11,7 @@ from typing import Any
 import _wire_targets
 import pytest
 
-from calltimeout import run
+from calltimeout import _wire, run
 
 METHOD = multiprocessing.get_start_method()
 
@@ -76,8 +76,9 @@ def test_a_forkserver_call_counts_the_one_descriptor_of_a_shared_value(
     held = (*ends[: LIMIT - 1], value)
     assert run(_wire_targets.count, 120.0, args=held, mode="process") == LIMIT
     starts.clear()
-    with pytest.raises(pickle.PicklingError, match=f"holds {LIMIT + 1} descriptors"):
+    with pytest.raises(pickle.PicklingError, match=f"holds {LIMIT + 1} descriptors") as info:
         run(_wire_targets.count, 120.0, args=(*ends[:LIMIT], value), mode="process")
+    assert "one per shared-memory block" in str(info.value)
     assert starts == []
 
 
@@ -87,3 +88,11 @@ def test_a_forkserver_call_counts_no_descriptor_for_a_manager_proxy(ends: list[A
         shared = manager.dict()
         held = (*ends[:LIMIT], shared)
         assert run(_wire_targets.count, 120.0, args=held, mode="process") == LIMIT + 1
+
+
+def test_the_limit_message_names_every_kind_of_descriptor_it_counts() -> None:
+    assert str(_wire.too_many(LIMIT + 1, LIMIT)) == (
+        "the call cannot be sent to the child process: it holds 249 descriptors (pipe ends,"
+        " sockets, two per queue, one per shared-memory block) and a forkserver start passes"
+        " at most 248"
+    )

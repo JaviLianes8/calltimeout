@@ -59,7 +59,9 @@ POSIX, `TerminateProcess` on Windows), and killed if it is still alive 1 second 
 The budget covers pickling the call and starting the child. Pickling runs in the caller
 and is not interrupted: a slow `__reduce__` overruns the budget by as long as it takes
 (and one that never returns blocks `run`), but a call whose pickling used up the budget
-is never started.
+is never started. Rebuilding the result also runs in the caller, once the child has sent
+it, and is neither counted against the budget nor interrupted: a result whose rebuild is
+slow delays `run` by as long (and one that never returns blocks it).
 
 - `fn`, its arguments and its result cross the process boundary, so they must pickle
   (under fork only the result is pickled, see below).
@@ -90,9 +92,10 @@ is never started.
   raises `CallCrashed` with its exit code as soon as it is gone, not a timeout, and never
   the default. The code is the one `multiprocessing` reports: the value given to
   `os._exit`, or `-N` for a child killed by signal `N` on POSIX.
-- An exception from the child arrives with the child's traceback chained as its cause.
-  One that cannot be pickled arrives as a `RuntimeError` naming it. `sys.exit()` in the
-  call raises `SystemExit` in the caller like any other exception.
+- An exception from the child arrives with the child's traceback chained as its cause:
+  a `RemoteTraceback`, whose text (also its `text` attribute) is that traceback. One that
+  cannot be pickled arrives as a `RuntimeError` naming its type and quoting its text.
+  `sys.exit()` in the call raises `SystemExit` in the caller like any other exception.
 - A result that cannot be pickled raises `pickle.PicklingError` at once, and one the
   parent cannot rebuild raises `pickle.UnpicklingError`.
 - After the result arrives the child gets up to 1 second to shut down on its own before
@@ -129,8 +132,9 @@ A `SIGALRM` timer raises `CallTimeout` inside the call, at the line it has reach
 PEP 475 a signal handler that raises also stops blocking system calls such as
 `time.sleep` or a socket read. It needs no thread and no pickling, but only works in the
 main thread on POSIX: in another thread it raises `RuntimeError`, and on Windows
-`NotImplementedError`. A long call inside C (a big regular expression match) is only
-interrupted once it returns to Python.
+`NotImplementedError`. Some C code checks for signals as it runs (a regular expression
+match does), but a long call inside C that does not (sorting a huge list, `sum()` over a
+long `range`) is only interrupted once it returns to Python.
 
 - A call that catches the timeout and carries on still ends in `CallTimeout`, once it
   returns. The timer fires once, so a loop that keeps catching `OSError` (which
@@ -144,7 +148,8 @@ interrupted once it returns to Python.
   starting it.
 - Timers already armed with `setitimer` or `alarm` keep their schedule and their handler
   still runs when due (up to 1 ms late, by the rule above), so signal-mode calls can be
-  nested. A call that resets `ITIMER_REAL` itself, or installs its own `SIGALRM` handler
+  nested. An interval timer's ticks stay on its own schedule: the lateness of one tick
+  does not carry over to the next. A call that resets `ITIMER_REAL` itself, or installs its own `SIGALRM` handler
   (`SIG_IGN` included, as an alarm-based helper may), cancels the deadline: its result is
   then returned even if the budget ran out. A `SIGALRM` handler installed outside Python
   is refused, because it could not be restored.
@@ -176,6 +181,8 @@ from any thread: on Windows the decorator is made, and each call raises
 In process mode under spawn or forkserver the child imports the function by name, so
 either the decorated function or the original must be reachable under its module and
 name: a plain `@with_timeout` at module level, or `fast = with_timeout(...)(slow)`. A
+method of a module-level class works too, as an instance method, a `staticmethod` or a
+`classmethod` (with `with_timeout` applied first, under the method decorator). A
 callable that pickles by value (a `functools.partial`, a callable object) is sent as it is.
 Each call runs in its own child, also a call made from inside the function's own child
 (a recursive function gets a new child, with its own budget, for every level).
@@ -203,7 +210,7 @@ print(lookup("id"))  # None
 | `CallCrashed` (a `RuntimeError`) | Process mode: the child exited without a result |
 | `TypeError` | `timeout` is not a real number (or one that fails to convert to `float`), `fn` is not callable or is a coroutine function, `args` is not a tuple, `kwargs` is not a mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine |
 | `ValueError` | `timeout` is negative, NaN or above `threading.TIMEOUT_MAX`, or `mode` is not one of the three names |
-| `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python |
+| `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python; process mode: the call raised an exception that cannot be pickled (raised in its place, naming its type) |
 | `NotImplementedError` | Signal mode on Windows |
 | `pickle.PicklingError` | Process mode: `fn` or an argument cannot be sent to the child (raised before the call runs: before any process starts, or once the child is stopped for a call that fails only when the start pickles it), a forkserver call holds more than 248 descriptors, or the result cannot be sent back |
 | `pickle.UnpicklingError` | Process mode: the result cannot be rebuilt in the caller |

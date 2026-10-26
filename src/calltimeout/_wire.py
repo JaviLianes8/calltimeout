@@ -6,7 +6,8 @@ import pickle
 import traceback
 from typing import TypeVar, cast
 
-from ._causes import DETAIL, bounded, exact_text
+from ._causes import DETAIL, bounded, exact_text, full_type_name
+from ._errors import RemoteTraceback
 from ._text import LIMIT, call_name, cut
 
 SENT = "the call cannot be sent to the child process"
@@ -14,17 +15,6 @@ SENT_BACK = "the call's result cannot be sent back"
 REBUILT = "the call's result cannot be rebuilt in this process"
 
 E = TypeVar("E", bound=pickle.PickleError)
-
-
-class RemoteTraceback(Exception):
-    """Carries the child's formatted traceback as the cause of a re-raised error."""
-
-    def __init__(self, text: str) -> None:
-        super().__init__(text)
-        self.text = text
-
-    def __str__(self) -> str:
-        return self.text
 
 
 def _about(kind: type[E], what: str, problem: Exception) -> E:
@@ -46,7 +36,8 @@ def unsendable(problem: Exception) -> pickle.PicklingError:
 
 def too_many(passed: int, limit: int) -> pickle.PicklingError:
     """The documented error for a call holding more descriptors than a start can pass."""
-    held = f"it holds {passed} descriptors (pipe ends, sockets, two per queue)"
+    kinds = "pipe ends, sockets, two per queue, one per shared-memory block"
+    held = f"it holds {passed} descriptors ({kinds})"
     return pickle.PicklingError(f"{SENT}: {held} and a forkserver start passes at most {limit}")
 
 
@@ -57,19 +48,27 @@ def _detail(exc: BaseException, limit: int = DETAIL) -> str:
     return cut(text, limit)
 
 
+def _formatted(exc: BaseException) -> str:
+    try:
+        return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    except Exception as problem:
+        # Its type's own attributes can raise: the error is still sent, without the text.
+        return f"<the child's traceback could not be formatted: {_detail(problem)}>\n"
+
+
 def pack_error(exc: BaseException) -> bytes:
     """Pickle an exception with its traceback text, or a stand-in if it cannot travel."""
-    text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    text = _formatted(exc)
     try:
         data = pickle.dumps((False, exc, text))
         pickle.loads(data)  # an exception can pickle and still fail to rebuild
     except Exception as problem:
-        name = f"{type(exc).__module__}.{type(exc).__qualname__}"
         try:
             message = cut(str(exc), DETAIL)
         except Exception:
             message = "<str() failed>"
-        stand_in = RuntimeError(f"{cut(name)}: {message} (not picklable: {_detail(problem)})")
+        name = cut(full_type_name(exc))
+        stand_in = RuntimeError(f"{name}: {message} (not picklable: {_detail(problem)})")
         data = pickle.dumps((False, stand_in, text))
     return data
 

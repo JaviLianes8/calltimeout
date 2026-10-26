@@ -1,4 +1,4 @@
-"""Exceptions raised when a call overruns its budget or its process dies."""
+"""Exceptions for a call that overruns its budget or whose child dies, and its traceback."""
 
 from __future__ import annotations
 
@@ -54,6 +54,33 @@ class CallCrashed(RuntimeError):
 
     def __reduce__(self) -> tuple[type[CallCrashed], tuple[int | None], dict[str, Any]]:
         return (type(self), (self.exitcode,), dict(vars(self)))
+
+
+class RemoteTraceback(Exception):
+    """The cause chained to an exception raised by a process-mode call in its child.
+
+    ``text`` is the child's formatted traceback, also the exception's text, so a printed
+    traceback shows where the call failed in the child.
+
+    >>> from calltimeout import RemoteTraceback, run
+    >>> try:
+    ...     run(int, 30.0, args=("ten",), mode="process")
+    ... except ValueError as error:
+    ...     cause = error.__cause__
+    >>> isinstance(cause, RemoteTraceback)
+    True
+    >>> cause.text.startswith("Traceback (most recent call last):")
+    True
+    >>> cause.text.splitlines()[-1]
+    "ValueError: invalid literal for int() with base 10: 'ten'"
+    """
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.text = text
+
+    def __str__(self) -> str:
+        return self.text
 
 
 class Expired(Exception):

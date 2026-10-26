@@ -20,6 +20,14 @@ _ASYNC_HINT = (
 )
 
 
+def _is_negative(number: Real) -> bool:
+    """For a number too large for a float, whose sign float() could not tell."""
+    try:
+        return bool(number < 0)
+    except Exception:
+        return False  # its own comparison failed: reported as too large, as before
+
+
 def check_timeout(timeout: object) -> float:
     """Return the budget as a float, or raise if it is not a usable number of seconds."""
     if isinstance(timeout, bool) or not isinstance(timeout, Real):
@@ -27,6 +35,8 @@ def check_timeout(timeout: object) -> float:
     try:
         seconds = float(timeout) + 0.0  # + 0.0 turns -0.0 into 0.0
     except OverflowError:
+        if _is_negative(timeout):
+            raise ValueError("timeout must not be negative") from None
         raise ValueError(f"timeout must be at most {threading.TIMEOUT_MAX} seconds") from None
     except Exception as exc:
         # A Real whose own conversion fails: still a bad argument, reported as one.

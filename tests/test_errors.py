@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import copy
 import pickle
+import sys
+import traceback
 
+import _targets
 import pytest
 
-from calltimeout import CallCrashed, CallTimeout
+from calltimeout import CallCrashed, CallTimeout, Mode, run
+
+MODES: list[Mode] = ["thread", "process"]
+if sys.platform != "win32":
+    MODES.append("signal")
 
 
 @pytest.mark.parametrize("budget", [0.25, 3])
@@ -56,3 +63,14 @@ def test_a_number_that_cannot_be_printed_is_named_by_its_type() -> None:
     assert str(CallCrashed(_ShyInt(3))) == (
         "the call's process exited with code a _ShyInt that cannot be shown before returning"
     )
+
+
+@pytest.mark.parametrize("budget", [0.05, 0])
+@pytest.mark.parametrize("mode", MODES)
+def test_a_timeout_never_shows_the_private_signal_behind_it(mode: Mode, budget: float) -> None:
+    with pytest.raises(CallTimeout) as info:
+        run(_targets.slow, budget, args=(2.0,), mode=mode)
+    assert info.value.__suppress_context__ is True
+    shown = "".join(traceback.format_exception(type(info.value), info.value, None))
+    assert "Expired" not in shown
+    assert "During handling" not in shown

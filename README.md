@@ -97,6 +97,7 @@ in depth, every error and its cause, nesting, and use from async code.
 | `with_timeout(timeout, *, mode="thread", default=...)` | The same as a decorator; the decorated function keeps its parameters |
 | `CallTimeout` | A `TimeoutError` raised when the budget runs out; `.timeout` is the budget |
 | `CallCrashed` | A `RuntimeError` raised in process mode when the child dies without a result; `.exitcode` |
+| `RemoteTraceback` | The cause chained to an exception from a process-mode call; its text (`.text`) is the child's traceback |
 | `Mode` | `Literal["thread", "process", "signal"]`, for annotating your own wrappers |
 
 Bad arguments raise `TypeError` or `ValueError` before anything starts. In process mode

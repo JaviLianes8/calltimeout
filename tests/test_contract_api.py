@@ -12,7 +12,7 @@ import typing
 import pytest
 
 import calltimeout
-from calltimeout import CallCrashed, CallTimeout, Mode, run, with_timeout
+from calltimeout import CallCrashed, CallTimeout, Mode, RemoteTraceback, run, with_timeout
 
 KW = inspect.Parameter.KEYWORD_ONLY
 POS = inspect.Parameter.POSITIONAL_OR_KEYWORD
@@ -87,9 +87,20 @@ def test_every_public_name_is_documented_with_an_example() -> None:
     assert ">>> " in (calltimeout.__doc__ or "")
 
 
+def test_remote_traceback_is_an_exception_whose_text_is_the_childs_traceback() -> None:
+    assert RemoteTraceback.__mro__[1:] == Exception.__mro__
+    assert _shape(RemoteTraceback) == [("text", POS, EMPTY)]
+    cause = RemoteTraceback("Traceback (most recent call last):\n  ...\nValueError: x\n")
+    assert str(cause) == cause.text == cause.args[0]
+    clone = pickle.loads(pickle.dumps(cause))
+    assert type(clone) is RemoteTraceback
+    assert clone.text == cause.text
+
+
 def test_public_objects_live_under_the_package_name() -> None:
     assert CallTimeout.__module__ == CallCrashed.__module__ == "calltimeout"
-    for public in (run, with_timeout, CallTimeout, CallCrashed):
+    assert RemoteTraceback.__module__ == "calltimeout"
+    for public in (run, with_timeout, CallTimeout, CallCrashed, RemoteTraceback):
         assert pickle.loads(pickle.dumps(public)) is public
 
 

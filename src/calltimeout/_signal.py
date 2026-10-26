@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import signal
 import sys
 import threading
@@ -62,6 +63,32 @@ def _pass_on(previous: Any, signum: int, frame: FrameType | None) -> None:
         signal.raise_signal(signum)
 
 
+def _next_tick(due: float, interval: float, now: float) -> float | None:
+    """When a periodic timer's next tick is due, on its own schedule; None if one-shot.
+
+    Counted from when this tick was due, not from when it ran, so lateness does not add
+    up; ticks already missed are skipped, as Linux does when it re-arms the timer.
+    """
+    if interval <= 0:
+        return None
+    return due + (math.floor((now - due) / interval) + 1) * interval
+
+
+def _outer_timer(now: float) -> tuple[float | None, float]:
+    """When the armed ITIMER_REAL is next due (None if disarmed), and its interval.
+
+    Linux re-arms an interval timer only once its signal is taken, so read in between it
+    shows no delay left. That tick is taken on the way back from this very call, and
+    reaches the handler in place: the next one is an interval away.
+    """
+    if sys.platform == "win32":  # only reached through run_with_signal; for type checkers
+        raise NotImplementedError(_NO_SIGALRM)
+    delay, interval = signal.getitimer(signal.ITIMER_REAL)
+    if delay > 0:
+        return now + delay, interval
+    return (now + interval if interval > 0 else None), interval
+
+
 def run_with_signal(
     fn: Callable[..., T],
     timeout: float,
@@ -71,9 +98,10 @@ def run_with_signal(
     """Run fn in this thread and raise CallTimeout inside it when the budget runs out.
 
     Pure Python code and blocking system calls are interrupted where they are (PEP 475:
-    a handler that raises stops the retry). Code running in C without returning to the
-    interpreter is only interrupted once it does. A timer that was already armed keeps
-    its schedule and its handler still runs when it is due.
+    a handler that raises stops the retry). Code running in C that does not check for
+    signals itself is only interrupted once it returns to the interpreter. A timer that
+    was already armed keeps its schedule and its handler still runs when it is due, up to
+    1 ms late, without that lateness adding up for an interval timer.
     """
     check_signal_mode()
     if sys.platform == "win32":  # repeated so type checkers on Windows skip the rest
@@ -82,8 +110,7 @@ def run_with_signal(
         raise Expired  # already within the last millisecond: a tick that soon can be lost
     start = time.monotonic()
     deadline = start + timeout
-    outer_delay, outer_interval = signal.getitimer(signal.ITIMER_REAL)
-    outer_due = start + outer_delay if outer_delay > 0 else None
+    outer_due, outer_interval = _outer_timer(start)
     fired = False
     active = True
     raised = CallTimeout(timeout)
@@ -101,15 +128,15 @@ def run_with_signal(
         if now < deadline - _FLOOR and outer_due is not None and now >= outer_due:
             signal.setitimer(signal.ITIMER_REAL, 0)
             # This tick is consumed even if the handler raises: never deliver it twice.
-            outer_due = now + outer_interval if outer_interval > 0 else None
+            outer_due = _next_tick(outer_due, outer_interval, now)
             try:
                 _pass_on(previous, signum, frame)
             finally:
                 # The enclosing handler may have re-armed the timer: its new schedule.
-                delay, interval = signal.getitimer(signal.ITIMER_REAL)
                 now = time.monotonic()
-                if delay > 0:
-                    outer_due, outer_interval = now + delay, interval
+                due, interval = _outer_timer(now)
+                if due is not None:
+                    outer_due, outer_interval = due, interval
                 arm(now)
         if now >= deadline - _FLOOR:
             fired = True

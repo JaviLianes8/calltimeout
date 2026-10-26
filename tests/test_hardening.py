@@ -12,7 +12,7 @@ from pathlib import Path
 import _targets
 import pytest
 
-from calltimeout import CallCrashed, CallTimeout, _process, _wire, run, with_timeout
+from calltimeout import CallCrashed, CallTimeout, RemoteTraceback, _process, run, with_timeout
 
 needs_pickling = pytest.mark.skipif(
     multiprocessing.get_start_method() == "fork", reason="fork pickles nothing"
@@ -112,7 +112,7 @@ def test_an_unpicklable_result_carries_the_childs_traceback_of_the_failure() -> 
         run(_targets.unpicklable_result, 30.0, mode="process")
     assert "lock" in str(info.value)
     trace = str(info.value.__cause__)
-    assert isinstance(info.value.__cause__, _wire.RemoteTraceback)
+    assert isinstance(info.value.__cause__, RemoteTraceback)
     assert "TypeError" in trace
     assert "direct cause" in trace
 
