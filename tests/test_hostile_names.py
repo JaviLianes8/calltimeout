@@ -56,7 +56,8 @@ class _Anonymous(metaclass=_hostile_errors.QualMeta):
     """A callable whose type refuses its qualified name; it has none of its own."""
 
     def __call__(self) -> str:
-        return threading.current_thread().name
+        # The thread of thread mode and the child of process mode are named after the call.
+        return f"{threading.current_thread().name}|{multiprocessing.current_process().name}"
 
 
 def _thread_name() -> str:
@@ -117,9 +118,10 @@ def test_a_function_name_that_lies_about_its_length_is_cut() -> None:
 
 
 def test_a_callable_whose_type_refuses_its_name_still_runs() -> None:
-    assert run(_Anonymous(), 30.0).startswith("calltimeout:")
+    assert run(_Anonymous(), 30.0).startswith("calltimeout:<unnamed callable>|")
     if FORK:
-        assert run(_Anonymous(), 30.0, mode="process").startswith("calltimeout:")
+        named = run(_Anonymous(), 30.0, mode="process")
+        assert named.endswith("|calltimeout:<unnamed callable>")
     else:
         with pytest.raises(pickle.PicklingError, match="cannot be sent"):
             run(_Anonymous(), 30.0, mode="process")
