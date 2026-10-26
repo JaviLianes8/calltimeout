@@ -8,9 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [1.0.0] - 2026-10-26
 
-The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed` and
-`Mode`, with their parameter names, defaults and exception types, follow Semantic
-Versioning from this release on. calltimeout was never published before 1.0.0, and
+The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed`,
+`RemoteTraceback` and `Mode`, with their parameter names, defaults and exception types,
+follow Semantic Versioning from this release on. calltimeout was never published before 1.0.0, and
 0.1.0 and 0.2.0 were never tagged; the changes below are against 0.2.0, commit 9b6975c
 on `main`.
 
