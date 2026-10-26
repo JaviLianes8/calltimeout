@@ -140,7 +140,7 @@ def test_an_unpicklable_child_error_with_a_lying_text_is_named_briefly() -> None
 def test_a_child_error_whose_type_refuses_its_module_still_arrives(mode: Mode) -> None:
     # Its traceback cannot be formatted nor its type pickled: the child still sends a
     # stand-in naming it, never a crash.
-    expected = _hostile_errors.ModuleErr if mode == "thread" else RuntimeError
+    expected = _hostile_errors.module_err() if mode == "thread" else RuntimeError
     with pytest.raises(expected) as info:
         run(_hostile_errors.raise_module_err, 30.0, mode=mode)
     assert not isinstance(info.value, CallCrashed)

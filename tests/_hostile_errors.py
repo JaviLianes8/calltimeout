@@ -154,12 +154,25 @@ class RaisingModule(type):
         return super().__getattribute__(name)
 
 
-class ModuleErr(Exception, metaclass=RaisingModule):
-    """An error whose traceback cannot be formatted and which cannot be pickled."""
+_made: dict[str, type[Exception]] = {}
+
+
+def module_err() -> type[Exception]:
+    """An error type whose tracebacks cannot be formatted and which cannot be pickled.
+
+    Made on demand: collectors read the module of every class defined at module level.
+    """
+    if not _made:
+
+        class ModuleErr(Exception, metaclass=RaisingModule):
+            pass
+
+        _made["ModuleErr"] = ModuleErr
+    return _made["ModuleErr"]
 
 
 def raise_module_err() -> None:
-    raise ModuleErr("boom")
+    raise module_err()("boom")
 
 
 class LyingUnpicklable(Exception):
