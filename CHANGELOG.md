@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-25
+## [1.0.0] - 2026-10-26
 
 The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed` and
 `Mode`, with their parameter names, defaults and exception types, follow Semantic

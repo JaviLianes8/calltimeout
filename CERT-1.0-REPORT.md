@@ -1,9 +1,9 @@
 # calltimeout 1.0.0 certification report
 
 The 1.0.0 certification bar (19 items) applied to calltimeout. No release is on PyPI
-(`https://pypi.org/pypi/calltimeout/json` answered 404 on 2026-10-18, 2026-10-22 and
-2026-10-25), so there is no upgrade path to test; the changes below are listed against
-0.2.0, the last state of `main` before this branch (9b6975c, never tagged).
+(`https://pypi.org/pypi/calltimeout/json` answered 404 on 2026-10-18, 2026-10-22,
+2026-10-25 and 2026-10-26), so there is no upgrade path to test; the changes below are
+listed against 0.2.0, the last state of `main` before this branch (9b6975c, never tagged).
 
 Progress:
 - [x] Branch `release/1.0.0` created from `main` (9b6975c, 0.2.0)
@@ -40,7 +40,7 @@ Progress:
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
 | 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2 free-threaded (Windows) and 3.14.4 (Linux, three start methods); 3.8 and 3.9 are below `requires-python` |
 | 11 | README and `twine check` | PASS: `twine check --strict` in the e2e tests, absolute links, problem, why versus five alternatives checked on PyPI on 2026-10-22, certified badge |
-| 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-10-25` |
+| 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-10-26` |
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
 | 15 | Gates each exit 0 | PASS: see Gates |
