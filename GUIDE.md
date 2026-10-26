@@ -149,10 +149,10 @@ long `range`) is only interrupted once it returns to Python.
 - Timers already armed with `setitimer` or `alarm` keep their schedule and their handler
   still runs when due (up to 1 ms late, by the rule above), so signal-mode calls can be
   nested. An interval timer's ticks stay on its own schedule: the lateness of one tick
-  does not carry over to the next. A call that resets `ITIMER_REAL` itself, or installs its own `SIGALRM` handler
-  (`SIG_IGN` included, as an alarm-based helper may), cancels the deadline: its result is
-  then returned even if the budget ran out. A `SIGALRM` handler installed outside Python
-  is refused, because it could not be restored.
+  does not carry over to the next. A call that resets `ITIMER_REAL` itself, or installs
+  its own `SIGALRM` handler (`SIG_IGN` included, as an alarm-based helper may), cancels
+  the deadline: its result is then returned even if the budget ran out. A `SIGALRM`
+  handler installed outside Python is refused, because it could not be restored.
 
 ```python
 import sys
