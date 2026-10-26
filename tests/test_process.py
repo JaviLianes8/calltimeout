@@ -7,12 +7,13 @@ import os
 import pickle
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import _targets
 import pytest
 
-from calltimeout import CallCrashed, CallTimeout, _process, _wire, run
+from calltimeout import CallCrashed, CallTimeout, RemoteTraceback, _process, run
 
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM is POSIX")
 
@@ -46,8 +47,13 @@ def test_an_exception_comes_back_with_the_childs_traceback() -> None:
     with pytest.raises(ValueError, match="boom") as info:
         run(_targets.boom, 30.0, mode="process")
     cause = info.value.__cause__
-    assert isinstance(cause, _wire.RemoteTraceback)
+    assert isinstance(cause, RemoteTraceback)
     assert 'raise ValueError("boom")' in str(cause)
+    # Shown and pickled under the package name, never the private module defining it.
+    shown = "".join(traceback.format_exception(type(info.value), info.value, None))
+    assert "calltimeout.RemoteTraceback: Traceback (most recent call last):" in shown
+    assert "_wire" not in shown
+    assert b"calltimeout._" not in pickle.dumps(cause)
 
 
 def test_a_child_that_dies_is_reported_at_once_as_a_crash() -> None:
@@ -119,10 +125,23 @@ def test_a_crash_is_seen_even_while_a_grandchild_holds_the_pipe() -> None:
     assert time.monotonic() - started < 6.0
 
 
+@posix_only
+@pytest.mark.parametrize("method", ["fork", "spawn", "forkserver"])
+def test_a_crash_behind_a_grandchild_is_seen_under_every_start_method(method: str) -> None:
+    # Each start method hands the sentinel to the grandchild differently, so the gate
+    # covers all three whatever the default is.
+    previous = multiprocessing.get_start_method()
+    multiprocessing.set_start_method(method, force=True)
+    try:
+        test_a_crash_is_seen_even_while_a_grandchild_holds_the_pipe()
+    finally:
+        multiprocessing.set_start_method(previous, force=True)
+
+
 def test_an_unpicklable_callable_fails_before_waiting() -> None:
     if multiprocessing.get_start_method() == "fork":
         pytest.skip("fork copies the callable instead of pickling it")
-    with pytest.raises((pickle.PicklingError, AttributeError, TypeError)):
+    with pytest.raises(pickle.PicklingError, match="cannot be sent to the child process"):
         run(lambda: 1, 30.0, mode="process")
     assert _no_children_left()
     # A start that failed half way once made the next child answer on a stale pipe.
@@ -133,3 +152,12 @@ def test_a_nested_process_timeout_propagates_through_the_default() -> None:
     with pytest.raises(CallTimeout) as info:
         run(_targets.nested_timeout, 60.0, mode="process", default="outer default")
     assert info.value.timeout == 0.05
+
+
+def test_the_calls_atexit_handlers_run_where_multiprocessing_runs_them(tmp_path: Path) -> None:
+    if multiprocessing.get_start_method() != "spawn" and sys.version_info < (3, 13):
+        pytest.skip("fork and forkserver children run exit functions from Python 3.13")
+    marker = tmp_path / "marker"
+    assert run(_targets.writes_at_exit, 30.0, args=(str(marker),), mode="process") == "returned"
+    # The child had its grace period to exit on its own, so its exit functions have run.
+    assert marker.read_text(encoding="utf-8") == "ran"

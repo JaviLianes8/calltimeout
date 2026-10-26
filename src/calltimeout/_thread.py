@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import contextvars
 import threading
+import time
 from collections.abc import Callable, Mapping
 from typing import TypeVar
 
 from ._errors import Expired
+from ._text import call_name
 from ._validate import reject_coroutine
 
 T = TypeVar("T")
@@ -15,8 +17,7 @@ T = TypeVar("T")
 
 def thread_name(fn: object) -> str:
     """Name a worker thread after its call so a lingering one is recognisable."""
-    name = getattr(fn, "__qualname__", None) or type(fn).__qualname__
-    return f"calltimeout:{name}"
+    return f"calltimeout:{call_name(fn)}"
 
 
 def run_in_thread(
@@ -31,6 +32,7 @@ def run_in_thread(
     caller stops waiting and raises, but a non-cooperative call keeps running in
     the background until it returns on its own or the process exits.
     """
+    deadline = time.monotonic() + timeout
     result: list[T] = []
     error: list[BaseException] = []
     # Same as asyncio.to_thread: the call sees the caller's context variables.
@@ -44,7 +46,8 @@ def run_in_thread(
 
     thread = threading.Thread(target=target, name=thread_name(fn), daemon=True)
     thread.start()
-    thread.join(timeout)
+    # Thread.join() always returns None: is_alive() tells whether it timed out.
+    thread.join(max(deadline - time.monotonic(), 0.0))
     if thread.is_alive():
         raise Expired
     if error:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from enum import Enum
+from numbers import Real
 from typing import Final, Literal, TypeVar, overload
 
 from ._errors import CallTimeout, Expired
@@ -15,7 +16,10 @@ from ._validate import check_call, check_mode, check_timeout
 T = TypeVar("T")
 D = TypeVar("D")
 
+#: The names of the three mechanisms ``run`` and ``with_timeout`` accept.
 Mode = Literal["thread", "process", "signal"]
+# Documented in the package docstring: typing caches Literal[...], so a __doc__ set here
+# would also relabel every identical Literal in the caller's own code.
 
 RUNNERS: Final = {
     "thread": run_in_thread,
@@ -25,7 +29,12 @@ RUNNERS: Final = {
 
 
 class _Unset(Enum):
+    """Marks an argument that was not given: None is a valid default."""
+
     token = 0
+
+    def __repr__(self) -> str:
+        return "<no default>"
 
 
 UNSET: Final = _Unset.token
@@ -34,7 +43,7 @@ UNSET: Final = _Unset.token
 @overload
 def run(
     fn: Callable[..., T],
-    timeout: float,
+    timeout: float | Real,
     *,
     args: tuple[object, ...] = ...,
     kwargs: Mapping[str, object] | None = ...,
@@ -45,7 +54,7 @@ def run(
 @overload
 def run(
     fn: Callable[..., T],
-    timeout: float,
+    timeout: float | Real,
     *,
     args: tuple[object, ...] = ...,
     kwargs: Mapping[str, object] | None = ...,
@@ -56,35 +65,57 @@ def run(
 
 def run(
     fn: Callable[..., T],
-    timeout: float,
+    timeout: float | Real,
     *,
     args: tuple[object, ...] = (),
     kwargs: Mapping[str, object] | None = None,
     mode: Mode = "thread",
     default: D | _Unset = UNSET,
 ) -> T | D:
-    """Run fn and return its result, or handle the timeout.
+    """Call ``fn(*args, **kwargs)`` and return its result, or give up after timeout seconds.
 
-    mode "thread" (the default) runs fn in a daemon thread and stops waiting on overrun;
-    the call itself cannot be killed and keeps running if it ignores the clock.
-    mode "process" runs fn in a child process that is terminated on overrun; fn, its
-    arguments and its result must be picklable, and a child that dies without a result
-    raises CallCrashed. mode "signal" (POSIX, main thread) raises CallTimeout inside fn.
+    ``mode`` picks the mechanism. ``"thread"`` (the default) runs fn in a daemon thread
+    and stops waiting on overrun, but cannot stop the call itself. ``"process"`` runs fn
+    in a child process that is terminated on overrun; its result must pickle, and so must
+    fn and its arguments under the spawn and forkserver start methods (fork pickles only
+    the result). A child that dies without a result raises ``CallCrashed``.
+    ``"signal"`` (POSIX, main thread only) raises ``CallTimeout`` inside fn.
 
-    A zero timeout raises at once without starting fn. If default is given it is
-    returned when this call's own budget runs out; otherwise CallTimeout is raised. A
-    CallTimeout from a nested call inside fn always propagates.
+    ``timeout`` is a number of seconds (an int, float or other real number; not a bool,
+    NaN or negative); zero raises at once without starting fn, and so does any budget
+    under 1 ms in signal mode. When the budget runs out ``CallTimeout`` is raised, or
+    ``default`` is returned if one is given. An exception raised by fn reaches the
+    caller, and a ``CallTimeout`` from a nested call inside fn always propagates. Bad
+    arguments raise ``TypeError`` or ``ValueError`` before anything starts. In process
+    mode under spawn and forkserver a call that cannot be pickled raises
+    ``pickle.PicklingError`` before the call runs; pickling happens in the caller, counts
+    against the budget and is not interrupted. Rebuilding the result also happens in the
+    caller, after the child sent it: it is not counted against the budget, nor interrupted.
+
+    >>> import math, time
+    >>> from calltimeout import CallTimeout, run
+    >>> run(pow, 5.0, args=(2, 10))
+    1024
+    >>> run(time.sleep, 0.05, args=(10,), default="gave up")
+    'gave up'
+    >>> try:
+    ...     run(time.sleep, 0.05, args=(10,))
+    ... except CallTimeout as error:
+    ...     print(error)
+    call did not finish within 0.05 seconds
+    >>> run(math.factorial, 30.0, args=(20,), mode="process")
+    2432902008176640000
     """
     seconds = check_timeout(timeout)
-    check_call(fn, args, kwargs)
-    check_mode(mode, RUNNERS)
-    runner = RUNNERS[mode]
-    if mode == "signal":
+    keywords = check_call(fn, args, kwargs)
+    name = check_mode(mode, RUNNERS)
+    runner = RUNNERS[name]
+    if name == "signal":
         check_signal_mode()  # before the zero-budget shortcut, so misuse always surfaces
     try:
         if seconds == 0:
             raise Expired
-        return runner(fn, seconds, args, dict(kwargs or {}))
+        return runner(fn, seconds, args, keywords)
     except Expired as expired:
         if not isinstance(default, _Unset):
             return default

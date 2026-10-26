@@ -27,6 +27,9 @@ with_timeout(1.0)(scale)("3")
 with_timeout(1.0)(scale)(3, bogus=1)
 run(scale, "1.0")
 with_timeout(1.0, mode="fiber")
+from fractions import Fraction
+reveal_type(run(scale, Fraction(1, 2), args=(3,)))
+reveal_type(with_timeout(Fraction(1, 2))(scale)(3))
 """
 
 
@@ -51,6 +54,8 @@ def mypy_output(tmp_path_factory: pytest.TempPathFactory) -> str:
         (10, "float | None"),
         (11, "def (value: int, factor: float =) -> float"),
         (12, "float | str"),
+        (18, "float"),
+        (19, "float"),
     ],
 )
 def test_results_and_signatures_are_typed(mypy_output: str, line: int, expected: str) -> None:
@@ -69,3 +74,23 @@ def test_results_and_signatures_are_typed(mypy_output: str, line: int, expected:
 )
 def test_wrong_calls_are_rejected(mypy_output: str, line: int, code: str) -> None:
     assert re.search(rf"snippet\.py:{line}: error: .*\[{code}\]", mypy_output), mypy_output
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_every_documented_example_passes_strict_type_checking(
+    platform: str, tmp_path: Path
+) -> None:
+    files: list[str] = []
+    for doc in ("README.md", "GUIDE.md"):
+        text = (SRC.parent / doc).read_text(encoding="utf-8")
+        for number, block in enumerate(re.findall(r"```python\n(.*?)```", text, re.DOTALL)):
+            example = tmp_path / f"{doc.split('.')[0].lower()}_{number}.py"
+            example.write_text(block, encoding="utf-8")
+            files.append(str(example))
+    config = tmp_path / "mypy.ini"
+    config.write_text(f"[mypy]\nmypy_path = {SRC.as_posix()}\n", encoding="utf-8")
+    cache = str(tmp_path / "cache")
+    options = ["--strict", "--platform", platform, "--config-file", str(config)]
+    out, err, status = api.run([*options, "--cache-dir", cache, *files])
+    assert status == 0, str(out) + str(err)
+    assert len(files) == 7

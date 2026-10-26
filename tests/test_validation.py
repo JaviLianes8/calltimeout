@@ -6,6 +6,7 @@ import math
 import sys
 import threading
 from collections.abc import Callable
+from fractions import Fraction
 
 import _targets
 import pytest
@@ -46,6 +47,18 @@ def test_rejects_an_unusable_timeout(timeout: float, message: str) -> None:
         run(_targets.echo, timeout, args=(1,))
 
 
+@pytest.mark.parametrize("timeout", [-(10**400), Fraction(-(10**400), 3)], ids=["int", "fraction"])
+def test_a_negative_timeout_too_large_for_a_float_is_called_negative(timeout: object) -> None:
+    with pytest.raises(ValueError, match="must not be negative"):
+        run(_targets.echo, timeout, args=(1,))  # type: ignore[call-overload]
+
+
+@pytest.mark.parametrize("timeout", [10**400, Fraction(10**400, 3)], ids=["int", "fraction"])
+def test_a_positive_timeout_too_large_for_a_float_is_above_the_limit(timeout: object) -> None:
+    with pytest.raises(ValueError, match="at most"):
+        run(_targets.echo, timeout, args=(1,))  # type: ignore[call-overload]
+
+
 def test_accepts_an_integer_timeout() -> None:
     assert run(_targets.echo, 1, args=("int",)) == "int"
 
@@ -76,6 +89,15 @@ def test_rejects_something_that_is_not_callable() -> None:
 def test_rejects_args_that_are_not_a_tuple() -> None:
     with pytest.raises(TypeError, match="args must be a tuple"):
         run(_targets.echo, 1.0, args=[1])  # type: ignore[call-overload]
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("kwargs", [[], 0, "", (), b""])
+def test_rejects_kwargs_that_are_falsy_but_not_a_mapping(kwargs: object, mode: Mode) -> None:
+    started: list[int] = []
+    with pytest.raises(TypeError, match="kwargs must be a mapping, not"):
+        run(started.append, 5.0, args=(1,), kwargs=kwargs, mode=mode)  # type: ignore[call-overload]
+    assert started == []
 
 
 def test_rejects_kwargs_with_keys_that_are_not_strings() -> None:
