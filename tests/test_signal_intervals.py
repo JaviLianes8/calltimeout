@@ -68,18 +68,20 @@ def test_the_same_timer_without_calls_is_on_schedule() -> None:
 
 def test_an_interval_timer_read_as_it_fires_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
     # Linux re-arms an interval timer only once its signal is taken: a read in between
-    # shows no delay left but the interval, and the timer is still running.
-    real = signal.getitimer
+    # shows no delay left but the interval, and the timer is still running. The call reads
+    # it as it replaces it with its own.
+    real = signal.setitimer
     reads: list[int] = []
 
-    def as_it_fires(which: int) -> tuple[float, float]:
+    def as_it_fires(which: int, seconds: float, interval: float = 0.0) -> tuple[float, float]:
         reads.append(which)
-        return (0.0, INTERVAL) if len(reads) == 1 else real(which)
+        old = real(which, seconds, interval)
+        return (0.0, INTERVAL) if len(reads) == 1 else old
 
     previous = signal.signal(signal.SIGALRM, lambda signum, frame: None)
     try:
         signal.setitimer(signal.ITIMER_REAL, INTERVAL, INTERVAL)
-        monkeypatch.setattr(signal, "getitimer", as_it_fires)
+        monkeypatch.setattr(signal, "setitimer", as_it_fires)
         run(time.sleep, 10.0, args=(0.03,), mode="signal")
         monkeypatch.undo()
         delay, interval = signal.getitimer(signal.ITIMER_REAL)
