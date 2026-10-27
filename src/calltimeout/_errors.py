@@ -76,11 +76,11 @@ class RemoteTraceback(Exception):
     """
 
     def __init__(self, text: str) -> None:
-        super().__init__(text)
+        # Built with something other than text, it still shows (bounded) instead of failing.
+        super().__init__(text if isinstance(text, str) else shown(text))
         self.text = text
 
     def __str__(self) -> str:
-        # Built with something other than text, it still shows (bounded) instead of failing.
         return self.text if isinstance(self.text, str) else shown(self.text)
 
 

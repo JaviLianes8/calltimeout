@@ -78,8 +78,8 @@ def test_a_timeout_never_shows_the_private_signal_behind_it(mode: Mode, budget: 
 
 @pytest.mark.parametrize(
     "text",
-    [None, 7, 2.5, b"bytes", ["a"], object(), "x" * 100_000],
-    ids=["none", "int", "float", "bytes", "list", "object", "long text"],
+    [None, 7, 2.5, b"bytes", ["a"], object(), 10**5000, "x" * 100_000],
+    ids=["none", "int", "float", "bytes", "list", "object", "huge int", "long text"],
 )
 def test_a_remote_traceback_always_shows_whatever_text_it_was_given(text: object) -> None:
     error = RemoteTraceback(text)  # type: ignore[arg-type]
@@ -87,6 +87,7 @@ def test_a_remote_traceback_always_shows_whatever_text_it_was_given(text: object
         assert str(error) == text  # the child's traceback, whole
     else:
         assert 0 < len(str(error)) <= 64  # shown like any value: bounded
+        assert len(repr(error)) <= 100
     printed = "".join(traceback.format_exception(type(error), error, None))
     assert "str() failed" not in printed
     if type(text) is not object:
