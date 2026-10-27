@@ -75,12 +75,18 @@ def test_an_argument_that_fails_to_rebuild_in_the_child_raises_a_bounded_unpickl
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows writes a result in one piece")
-def test_a_child_that_stalls_while_sending_its_result_still_ends_at_the_deadline() -> None:
+@pytest.mark.parametrize("stop", [False, True], ids=["asleep", "stopped"])
+def test_a_child_that_stalls_while_sending_its_result_still_ends_at_the_deadline(
+    stop: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(_process, "GRACE", 0.5)
     started = time.monotonic()
     with pytest.raises(CallTimeout) as info:
-        run(_child_targets.stall_after_header, 1.0, mode="process")
+        run(_child_targets.stall_after_header, 1.0, args=(stop,), mode="process")
+    elapsed = time.monotonic() - started
     assert info.value.timeout == 1.0
-    assert time.monotonic() - started < 1.0 + _process.GRACE + 3.0
+    # Terminated at the deadline; a stopped child ignores that, and is killed after GRACE.
+    assert elapsed < 1.3 if not stop else 1.5 <= elapsed < 2.0, elapsed
     assert multiprocessing.active_children() == []
 
 

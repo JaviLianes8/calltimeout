@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import signal
 import sys
 import time
 import types
@@ -88,8 +89,11 @@ class LoadsBadly:
         return (_refuse_to_load, (self.size,))
 
 
-def stall_after_header() -> bytes:
-    """Return 1 MB, but stall once the length header is written (POSIX writes it apart)."""
+def stall_after_header(stop: bool = False) -> bytes:
+    """Return 1 MB, but stall once the length header is written (POSIX writes it apart).
+
+    Asleep, or stopped (stop=True): a stopped process ignores SIGTERM until killed.
+    """
     writes = [0]
 
     def hook(frame: object, event: str, arg: Any) -> None:
@@ -97,6 +101,8 @@ def stall_after_header() -> bytes:
             writes[0] += 1
             if writes[0] == 1:
                 sys.setprofile(None)
+                if stop and sys.platform != "win32":
+                    os.kill(os.getpid(), signal.SIGSTOP)
                 time.sleep(30.0)
 
     sys.setprofile(hook)
