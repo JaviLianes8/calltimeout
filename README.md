@@ -63,7 +63,7 @@ The trade-off is the whole point of the library, so it is stated plainly:
 | Stops a runaway call | No: it keeps running in a daemon thread | Yes: terminated, and killed if still alive 1 second later | Python code and blocking system calls: yes. A long call inside C: once it returns |
 | Where it works | Everywhere | Everywhere | POSIX, main thread only |
 | Pickling | Not needed | The result always; `fn` and its arguments under spawn and forkserver | Not needed |
-| Cost | A thread | A new process, whose start counts against the budget | A timer |
+| Cost | A thread | A new process, whose start and the transfer of its result count against the budget | A timer |
 | Context variables | A copy of the caller's, like `asyncio.to_thread` | A copy under fork, the defaults under spawn and forkserver; changes never come back | Shared: same thread |
 
 ```python

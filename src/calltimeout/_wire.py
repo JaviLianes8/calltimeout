@@ -8,9 +8,10 @@ from typing import TypeVar, cast
 
 from ._causes import DETAIL, bounded, exact_text, full_type_name
 from ._errors import RemoteTraceback
-from ._text import LIMIT, call_name, cut
+from ._text import LIMIT, call_name, cut, type_name
 
 SENT = "the call cannot be sent to the child process"
+LOADED = "the call cannot be loaded in the child process"
 SENT_BACK = "the call's result cannot be sent back"
 REBUILT = "the call's result cannot be rebuilt in this process"
 
@@ -32,6 +33,11 @@ def _about(kind: type[E], what: str, problem: Exception) -> E:
 def unsendable(problem: Exception) -> pickle.PicklingError:
     """The documented error for a call that cannot be pickled (see _about)."""
     return _about(pickle.PicklingError, SENT, problem)
+
+
+def unloadable(problem: Exception) -> pickle.UnpicklingError:
+    """The documented error for a call the child cannot rebuild (see _about)."""
+    return _about(pickle.UnpicklingError, LOADED, problem)
 
 
 def too_many(passed: int, limit: int) -> pickle.PicklingError:
@@ -61,7 +67,10 @@ def pack_error(exc: BaseException) -> bytes:
     text = _formatted(exc)
     try:
         data = pickle.dumps((False, exc, text))
-        pickle.loads(data)  # an exception can pickle and still fail to rebuild
+        # An exception can pickle and still fail to rebuild, or rebuild as something else.
+        rebuilt = cast("tuple[bool, object, str]", pickle.loads(data))[1]
+        if not isinstance(rebuilt, BaseException):
+            raise TypeError(f"it rebuilds as {type_name(rebuilt)}, not an exception")
     except Exception as problem:
         try:
             message = cut(str(exc), DETAIL)
@@ -103,7 +112,10 @@ def unpack(data: bytes) -> object:
     ok, payload, text = _load(data)
     if ok:
         return payload
-    error = cast(BaseException, payload)
+    if isinstance(payload, BaseException):
+        error = payload
+    else:  # sent as an exception, rebuilt here as something else
+        error = RuntimeError(f"the call's error arrived as {type_name(payload)}")
     error.__cause__ = RemoteTraceback(text)
     try:
         raise error

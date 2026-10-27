@@ -30,6 +30,8 @@ with_timeout(1.0, mode="fiber")
 from fractions import Fraction
 reveal_type(run(scale, Fraction(1, 2), args=(3,)))
 reveal_type(with_timeout(Fraction(1, 2))(scale)(3))
+from calltimeout import CallCrashed
+reveal_type(CallCrashed(1).exitcode)
 """
 
 
@@ -56,6 +58,7 @@ def mypy_output(tmp_path_factory: pytest.TempPathFactory) -> str:
         (12, "float | str"),
         (18, "float"),
         (19, "float"),
+        (21, "int"),
     ],
 )
 def test_results_and_signatures_are_typed(mypy_output: str, line: int, expected: str) -> None:

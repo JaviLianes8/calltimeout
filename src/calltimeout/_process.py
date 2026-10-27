@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import multiprocessing
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from multiprocessing.connection import Connection, wait
+from multiprocessing.connection import wait
 from multiprocessing.process import BaseProcess
 from typing import Any, NoReturn, Protocol, TypeVar, cast
 
+from ._child import serve
 from ._errors import CallCrashed, Expired
 from ._parcel import Parcel, prepickle
 from ._thread import thread_name
-from ._validate import reject_coroutine
-from ._wire import pack_error, pack_result, unpack, unsendable
+from ._wire import unpack, unsendable
 
 T = TypeVar("T")
 
@@ -23,39 +24,10 @@ GRACE = 1.0
 # Longest sleep between checks that the child is still alive.
 POLL = 0.25
 
-# The target this child process was started for, so a decorated function knows it is
-# already inside its own child and must not start another one.
-_targets: list[object] = []
-
-
-def claim_child_target(fn: object) -> bool:
-    """Return True once if fn is the call this child process was started to run."""
-    if _targets and _targets[-1] is fn:
-        _targets.pop()
-        return True
-    return False
-
 
 class _Reader(Protocol):
     def poll(self) -> bool: ...
     def recv_bytes(self) -> bytes: ...
-
-
-def _child(parcel: Parcel) -> None:
-    if parcel.conn is None:
-        return  # the call could not be sent: the caller is stopping this child
-    conn = cast(Connection, parcel.conn)
-    try:
-        try:
-            # Loading can fail here (spawn and forkserver import fn by name): report it.
-            fn, args, kwargs = parcel.open()
-            _targets.append(fn)
-            data = pack_result(reject_coroutine(fn(*args, **kwargs)))
-        except BaseException as exc:
-            data = pack_error(exc)
-        conn.send_bytes(data)
-    finally:
-        conn.close()
 
 
 def _await(reader: Any, process: BaseProcess, deadline: float) -> list[object]:
@@ -113,15 +85,42 @@ def _refuse(parcel: Parcel) -> NoReturn:
         del error  # no cycle through this frame
 
 
-def _receive(reader: _Reader, ready: Sequence[object]) -> bytes | None:
+def _watch(process: BaseProcess, deadline: float, done: threading.Event, late: list[bool]) -> None:
+    """Stop the child at the deadline unless done: terminated, then killed after GRACE."""
+    if done.wait(max(deadline - time.monotonic(), 0.0)):
+        return
+    late.append(True)
+    process.terminate()
+    if not done.wait(GRACE):
+        process.kill()  # also ends a stopped child, which SIGTERM does not
+
+
+def _receive(
+    reader: _Reader, ready: Sequence[object], process: BaseProcess, deadline: float
+) -> bytes | None:
+    """The child's message, or None if it closed the pipe or died without sending one.
+
+    The deadline holds while the message arrives: on POSIX a long one is written in two
+    parts, and a child stalled between or during them would block the read for good. It
+    is stopped at the deadline instead, and the call then ran out of time.
+    """
     # The child may have sent and exited in the same instant: check the pipe either way.
-    if reader in ready or reader.poll():
-        try:
-            return reader.recv_bytes()
-        except (EOFError, OSError):
-            # Closed without a message, or cut short because the child died writing it.
-            return None
-    return None
+    if not (reader in ready or reader.poll()):
+        return None
+    done = threading.Event()
+    late: list[bool] = []
+    watchdog = threading.Thread(target=_watch, args=(process, deadline, done, late), daemon=True)
+    watchdog.start()
+    try:
+        return reader.recv_bytes()
+    except (EOFError, OSError):
+        # Closed without a message, or cut short because the child died writing it.
+        if late:
+            raise Expired from None
+        return None
+    finally:
+        done.set()
+        watchdog.join()  # before the child is reaped: it must never signal a reused pid
 
 
 def run_in_process(
@@ -135,9 +134,10 @@ def run_in_process(
     Unlike thread mode this truly stops the work on timeout, but the result, and under
     spawn and forkserver fn and its arguments, must be picklable so they can cross the
     process boundary. A child that exits without a result raises CallCrashed as soon as
-    it is gone. The budget covers pickling the call and starting the child; pickling runs
-    here and is not interrupted, so only the check after it can stop the start. The result
-    is rebuilt here too, once the child has sent it: outside the budget, not interrupted.
+    it is gone. The budget covers pickling the call, starting the child and receiving the
+    result; pickling runs here and is not interrupted, so only the check after it can stop
+    the start. The result is rebuilt here too, once it has arrived: outside the budget, not
+    interrupted.
     """
     deadline = time.monotonic() + timeout
     ctx = multiprocessing.get_context()
@@ -146,7 +146,7 @@ def run_in_process(
         raise Expired  # pickling the call used up the budget: never start it
     reader, writer = ctx.Pipe(duplex=False)
     parcel = Parcel(writer, data, held)
-    process = ctx.Process(target=_child, args=(parcel,), name=thread_name(fn))
+    process = ctx.Process(target=serve, args=(parcel,), name=thread_name(fn))
     started = finished = False
     try:
         process.start()
@@ -157,12 +157,12 @@ def run_in_process(
         ready = _await(reader, process, deadline)
         if not ready:
             raise Expired
-        data = _receive(reader, ready)
+        data = _receive(reader, ready, process, deadline)
         if data is None:
             # No result will come: report the exit, but never wait past the deadline.
             if not _exits_within(process, deadline - time.monotonic()):
                 raise Expired
-            raise CallCrashed(process.exitcode)
+            raise CallCrashed(cast(int, process.exitcode))  # it exited, so it has a code
         finished = True
     finally:
         # Runs on every exit, including KeyboardInterrupt while waiting.

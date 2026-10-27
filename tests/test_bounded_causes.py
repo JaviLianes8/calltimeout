@@ -11,7 +11,7 @@ import _targets
 import _wire_targets
 import pytest
 
-from calltimeout import run
+from calltimeout import _causes, run
 
 needs_pickling = pytest.mark.skipif(
     multiprocessing.get_start_method() == "fork", reason="fork pickles nothing"
@@ -106,3 +106,32 @@ def test_exactly_60_characters_of_a_results_pickling_error_are_quoted() -> None:
     assert message.endswith("x...")
     # The child's cause, printed in the traceback text sent along, is cut after 300.
     assert "ValueError: " + "x" * 300 + "...\n" in str(info.value.__cause__)
+
+
+class _BigNote:
+    def __str__(self) -> str:
+        return "N" * 5000
+
+
+@needs_pickling
+def test_a_note_that_is_not_text_is_replaced_by_a_short_stand_in() -> None:
+    error = TypeError("cannot pickle this")
+    vars(error)["__notes__"] = [_BigNote(), "kept"]  # set directly: Python 3.10 has no add_note
+    with pytest.raises(pickle.PicklingError, match=SENT) as info:
+        run(len, 30.0, args=(_wire_targets.RaisesOnReduce(error),), mode="process")
+    notes = vars(info.value.__cause__)["__notes__"]
+    assert notes[:2] == ["<note>", "kept"]  # Python 3.14 adds notes of its own after them
+    assert max(len(note) for note in notes) <= 63
+
+
+@pytest.mark.parametrize(
+    ("notes", "kept"),
+    [("N" * 1000, ["N" * 60 + "..."]), ([_BigNote()], ["<note>"]), (7, None)],
+    ids=["one str", "not text", "not a list"],
+)
+def test_notes_are_kept_bounded_whatever_they_were_set_to(notes: object, kept: object) -> None:
+    # Python 3.14's pickle replaces an error whose notes are a str (it cannot add its
+    # own), so that shape is checked on the bounding itself.
+    error = TypeError("cannot pickle this")
+    vars(error)["__notes__"] = notes
+    assert vars(_causes.bounded(error)).get("__notes__") == kept

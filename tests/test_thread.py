@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import contextvars
 import threading
+import time
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import _targets
 import pytest
 
-from calltimeout import CallTimeout, run
+from calltimeout import CallTimeout, _thread, run
 
 request_id: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="unset")
 
@@ -81,3 +83,34 @@ def test_a_nested_timeout_is_not_mistaken_for_this_calls_own() -> None:
     with pytest.raises(CallTimeout) as info:
         run(_targets.nested_timeout, 30.0, default="outer default")
     assert info.value.timeout == 0.05
+
+
+@pytest.mark.parametrize("error", [SystemExit(4), KeyboardInterrupt()])
+def test_an_exit_or_interrupt_raised_by_the_call_reaches_the_caller_unchanged(
+    error: BaseException,
+) -> None:
+    def leave() -> None:
+        raise error
+
+    with pytest.raises(type(error)) as info:
+        run(leave, 5.0)
+    assert info.value is error
+
+
+def test_a_value_that_arrives_after_the_budget_is_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A call holding the GIL can finish after its deadline but before the caller runs
+    # again: its value came too late. The clock is moved past the deadline as it returns.
+    clock = SimpleNamespace(jump=0.0)
+    clock.monotonic = lambda: time.monotonic() + clock.jump
+
+    def late() -> str:
+        clock.jump = 10.0
+        return "late"
+
+    monkeypatch.setattr(_thread, "time", clock)
+    with pytest.raises(CallTimeout):
+        run(late, 1.0)
+    clock.jump = 0.0
+    assert run(late, 1.0, default="gave up") == "gave up"

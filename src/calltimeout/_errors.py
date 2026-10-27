@@ -48,11 +48,11 @@ class CallCrashed(RuntimeError):
     "the call's process exited with code 3 before returning"
     """
 
-    def __init__(self, exitcode: int | None) -> None:
+    def __init__(self, exitcode: int) -> None:
         self.exitcode = exitcode
         super().__init__(f"the call's process exited with code {shown(exitcode)} before returning")
 
-    def __reduce__(self) -> tuple[type[CallCrashed], tuple[int | None], dict[str, Any]]:
+    def __reduce__(self) -> tuple[type[CallCrashed], tuple[int], dict[str, Any]]:
         return (type(self), (self.exitcode,), dict(vars(self)))
 
 
@@ -80,7 +80,8 @@ class RemoteTraceback(Exception):
         self.text = text
 
     def __str__(self) -> str:
-        return self.text
+        # Built with something other than text, it still shows (bounded) instead of failing.
+        return self.text if isinstance(self.text, str) else shown(self.text)
 
 
 class Expired(Exception):

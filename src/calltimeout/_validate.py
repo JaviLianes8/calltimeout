@@ -51,22 +51,37 @@ def check_timeout(timeout: object) -> float:
     return seconds
 
 
-def _is_coroutine_function(fn: object) -> bool:
+# A generator function returns at once: its body runs as it is iterated, after run returned.
+_GENERATOR_HINT = (
+    "its body runs only as the generator is iterated, after the call returned, outside the"
+    " budget; run a function that consumes it instead"
+)
+
+
+def _deferred_kind(fn: object) -> str | None:
+    """The kind of function whose body a call does not run, or None."""
     try:
-        return inspect.iscoroutinefunction(fn)
+        if inspect.iscoroutinefunction(fn):
+            return f"a coroutine function: {_ASYNC_HINT}"
+        if inspect.isasyncgenfunction(fn):
+            return f"an async generator function: {_ASYNC_HINT}"
+        if inspect.isgeneratorfunction(fn):
+            return f"a generator function: {_GENERATOR_HINT}"
     except Exception:
         # Its own __getattr__ raised while inspect looked around: the call itself may
         # still work, and the object's error is no argument error of ours.
-        return False
+        pass
+    return None
 
 
 def check_call(fn: object, args: object, kwargs: object) -> dict[str, object]:
     """Reject arguments the call could never run with; return kwargs as the call gets them."""
     if not callable(fn):
         raise TypeError(f"fn must be callable, not {type_name(fn)}")
-    if _is_coroutine_function(fn):
+    kind = _deferred_kind(fn)
+    if kind is not None:
         # Named, not repr'd: the repr of a partial would quote its bound arguments.
-        raise TypeError(f"{call_name(fn)} is a coroutine function: {_ASYNC_HINT}")
+        raise TypeError(f"{call_name(fn)} is {kind}")
     if not isinstance(args, tuple):
         raise TypeError(f"args must be a tuple, not {type_name(args)}")
     if kwargs is None:
@@ -95,8 +110,10 @@ def check_mode(mode: object, modes: Iterable[str]) -> str:
 
 
 def reject_coroutine(value: T) -> T:
-    """Refuse a coroutine result: it would never run and warn later as unawaited."""
+    """Refuse a coroutine or async generator result: its body would never run here."""
     if inspect.iscoroutine(value):
-        value.close()
+        value.close()  # else it warns later as never awaited
         raise TypeError(f"the call returned a coroutine: {_ASYNC_HINT}")
+    if inspect.isasyncgen(value):
+        raise TypeError(f"the call returned an async generator: {_ASYNC_HINT}")
     return value

@@ -90,7 +90,7 @@ def test_the_exceptions_round_trip_with_any_number(seed: int) -> None:
     rng = random.Random(seed)
     for _ in range(3000):
         timeout = rng.choice([rng.random() * 10 ** rng.randint(-9, 9), rng.randint(0, 10**30)])
-        code = rng.choice([None, rng.randint(-64, 255), rng.randint(-(2**70), 2**70)])
+        code = rng.choice([rng.randint(-64, 255), rng.randint(-(2**70), 2**70)])
         for error in (CallTimeout(timeout), CallCrashed(code)):
             clone = pickle.loads(pickle.dumps(error))
             assert (type(clone), str(clone), vars(clone)) == (type(error), str(error), vars(error))

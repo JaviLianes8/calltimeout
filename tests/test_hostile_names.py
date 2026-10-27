@@ -101,9 +101,12 @@ def test_every_argument_check_names_a_hostile_type_briefly(
     check: tuple[Callable[[object], object], str], make: Callable[[], object]
 ) -> None:
     call, message = check
+    hostile = make()
     with pytest.raises(TypeError) as info:
-        call(make())
+        call(hostile)
     assert str(info.value).startswith(message)
+    if make in (_unnamed, _numbered):
+        assert str(info.value) == message + "<unnamed type>"
     assert len(str(info.value)) < 200
     assert info.value.__cause__ is None
 

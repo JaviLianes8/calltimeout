@@ -86,7 +86,9 @@ def run(
     under 1 ms in signal mode. When the budget runs out ``CallTimeout`` is raised, or
     ``default`` is returned if one is given. An exception raised by fn reaches the
     caller, and a ``CallTimeout`` from a nested call inside fn always propagates. Bad
-    arguments raise ``TypeError`` or ``ValueError`` before anything starts. In process
+    arguments raise ``TypeError`` or ``ValueError`` before anything starts, and so does a
+    coroutine, async generator or generator function, whose body would run outside the
+    budget. In process
     mode under spawn and forkserver a call that cannot be pickled raises
     ``pickle.PicklingError`` before the call runs; pickling happens in the caller, counts
     against the budget and is not interrupted. Rebuilding the result also happens in the

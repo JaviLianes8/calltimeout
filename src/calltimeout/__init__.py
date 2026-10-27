@@ -34,10 +34,12 @@ from ._errors import CallCrashed, CallTimeout, RemoteTraceback
 
 __version__ = "1.0.0"
 
-# The exceptions show and pickle as calltimeout.<Name>: tracebacks name the package and a
-# pickle never depends on the private module that defines them.
+# The public names show and pickle as calltimeout.<name>: tracebacks and introspection name
+# the package, and a pickle never depends on the private module that defines them.
 CallCrashed.__module__ = __name__
 CallTimeout.__module__ = __name__
 RemoteTraceback.__module__ = __name__
+run.__module__ = __name__
+with_timeout.__module__ = __name__
 
 __all__ = ["CallCrashed", "CallTimeout", "Mode", "RemoteTraceback", "run", "with_timeout"]

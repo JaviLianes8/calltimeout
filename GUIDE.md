@@ -17,6 +17,14 @@ starts, in every mode. `mode` is one of the three names of `Mode`,
 wrappers. `kwargs` is copied into a plain `dict` in the caller before the call starts, so
 a mapping changed later does not affect the call.
 
+The budget covers the call itself, so `fn` must do its work when called. A coroutine
+function or an async generator function raises `TypeError` with a pointer to `asyncio`,
+and so does a call that returns a coroutine or an async generator. A generator function
+raises `TypeError` too: calling it only creates the generator, and its body would run as
+it is iterated, after `run` returned, outside the budget. Run a function that consumes it
+instead. A callable that returns some other lazy object (`map`, a file read later) is
+timed only until it returns that object.
+
 When the budget runs out, `run` raises `CallTimeout`, or returns `default` if one was
 given (`None` is a valid default). An exception raised by the call reaches the caller. A
 `CallTimeout` from a nested call inside `fn` is not this call's timeout: it propagates
@@ -47,21 +55,29 @@ clock keeps running after `run` has raised, until it returns or the process exit
 threads are stopped abruptly at shutdown, so do not leave one holding a file or a
 transaction. Use thread mode for calls that end on their own, eventually.
 
-Thread and process mode measure the budget with `time.monotonic()`, so they are as precise
-as that clock, whose resolution `time.get_clock_info("monotonic")` reports. On Windows it
-is `GetTickCount64()`, about 15.6 ms, up to Python 3.12, and `QueryPerformanceCounter()`
-from 3.13.
+Thread and process mode measure the budget with `time.monotonic()`, whose resolution
+`time.get_clock_info("monotonic")` reports. On Windows it is `GetTickCount64()`, about
+15.6 ms, up to Python 3.12, and `QueryPerformanceCounter()` from 3.13. In thread mode the
+GIL limits precision more than the clock: a call running Python code holds it, and lets
+the waiting caller run only every switch interval (`sys.getswitchinterval()`, 5 ms by
+default). So `CallTimeout` can come up to about two intervals after the budget ran out. A
+call that ends after the budget ran out, even before the caller noticed, is a timeout:
+what it returned or raised then is dropped, as in process mode. Free-threaded builds have
+no GIL and no such delay.
 
 ## Process mode
 
 The call runs in a child process that is terminated when the budget runs out (SIGTERM on
 POSIX, `TerminateProcess` on Windows), and killed if it is still alive 1 second later.
-The budget covers pickling the call and starting the child. Pickling runs in the caller
-and is not interrupted: a slow `__reduce__` overruns the budget by as long as it takes
-(and one that never returns blocks `run`), but a call whose pickling used up the budget
-is never started. Rebuilding the result also runs in the caller, once the child has sent
-it, and is neither counted against the budget nor interrupted: a result whose rebuild is
-slow delays `run` by as long (and one that never returns blocks it).
+The budget covers pickling the call, starting the child and receiving its result.
+Pickling runs in the caller and is not interrupted: a slow `__reduce__` overruns the
+budget by as long as it takes (and one that never returns blocks `run`), but a call whose
+pickling used up the budget is never started. A result still arriving when the budget
+runs out (a huge one, or one whose child stalled half way through sending it) ends the
+call like any overrun: the child is stopped and `CallTimeout` raised. Rebuilding the
+result also runs in the caller, once it has arrived, and is neither counted against the
+budget nor interrupted: a result whose rebuild is slow delays `run` by as long (and one
+that never returns blocks it).
 
 - `fn`, its arguments and its result cross the process boundary, so they must pickle
   (under fork only the result is pickled, see below).
@@ -87,6 +103,11 @@ slow delays `run` by as long (and one that never returns blocks it).
   it is stopped before it runs anything. A `KeyboardInterrupt` or other exception that is
   not an `Exception`, raised there, is raised as it is once that child is stopped. Under
   fork nothing is pickled on the way in.
+- Under spawn and forkserver a call that pickles in the caller but cannot be loaded in
+  the child (a function defined under `if __name__ == "__main__":`, in `python -c` or a
+  notebook, or in a module the child cannot import; an argument whose rebuild raises)
+  raises `pickle.UnpicklingError`, quoting the child's error briefly, with the child's
+  traceback chained as its cause.
 - The child process is named `calltimeout:<function>`, like the thread of thread mode.
 - A child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
   raises `CallCrashed` with its exit code as soon as it is gone, not a timeout, and never
@@ -94,7 +115,8 @@ slow delays `run` by as long (and one that never returns blocks it).
   `os._exit`, or `-N` for a child killed by signal `N` on POSIX.
 - An exception from the child arrives with the child's traceback chained as its cause:
   a `RemoteTraceback`, whose text (also its `text` attribute) is that traceback. One that
-  cannot be pickled arrives as a `RuntimeError` naming its type and quoting its text.
+  cannot be pickled, or that would arrive as something other than an exception, arrives
+  as a `RuntimeError` naming its type and quoting its text.
   `sys.exit()` in the call raises `SystemExit` in the caller like any other exception.
 - A result that cannot be pickled raises `pickle.PicklingError` at once, and one the
   parent cannot rebuild raises `pickle.UnpicklingError`.
@@ -148,8 +170,13 @@ long `range`) is only interrupted once it returns to Python.
   starting it.
 - Timers already armed with `setitimer` or `alarm` keep their schedule and their handler
   still runs when due (up to 1 ms late, by the rule above), so signal-mode calls can be
-  nested. An interval timer's ticks stay on its own schedule: the lateness of one tick
-  does not carry over to the next. A call that resets `ITIMER_REAL` itself, or installs
+  nested. An interval timer's ticks stay on its own schedule, over any number of calls:
+  none is lost or delivered twice, and the lateness of one tick does not carry over to
+  the next. A call that starts within 0.2 ms of such a tick lets it through first (Linux
+  can lose a tick whose timer is replaced in the instant it fires), which counts against
+  its budget. A `SIGALRM` that is not the call's own (a tick already on its way as the call
+  starts, or one sent with `kill`) goes to the handler that was there before. A call that
+  resets `ITIMER_REAL` itself, or installs
   its own `SIGALRM` handler (`SIG_IGN` included, as an alarm-based helper may), cancels
   the deadline: its result is then returned even if the budget ran out. A `SIGALRM`
   handler installed outside Python is refused, because it could not be restored.
@@ -208,19 +235,19 @@ print(lookup("id"))  # None
 |---|---|
 | `CallTimeout` (a `TimeoutError`) | The budget ran out and no default was given |
 | `CallCrashed` (a `RuntimeError`) | Process mode: the child exited without a result |
-| `TypeError` | `timeout` is not a real number (or one that fails to convert to `float`), `fn` is not callable or is a coroutine function, `args` is not a tuple, `kwargs` is not a mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine |
+| `TypeError` | `timeout` is not a real number (or one that fails to convert to `float`), `fn` is not callable or is a coroutine, async generator or generator function, `args` is not a tuple, `kwargs` is not a mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine or an async generator |
 | `ValueError` | `timeout` is negative, NaN or above `threading.TIMEOUT_MAX`, or `mode` is not one of the three names |
-| `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python; process mode: the call raised an exception that cannot be pickled (raised in its place, naming its type) |
+| `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python; process mode: the call raised an exception that cannot be pickled, or that would arrive as something other than an exception (raised in its place, naming its type) |
 | `NotImplementedError` | Signal mode on Windows |
 | `pickle.PicklingError` | Process mode: `fn` or an argument cannot be sent to the child (raised before the call runs: before any process starts, or once the child is stopped for a call that fails only when the start pickles it), a forkserver call holds more than 248 descriptors, or the result cannot be sent back |
-| `pickle.UnpicklingError` | Process mode: the result cannot be rebuilt in the caller |
+| `pickle.UnpicklingError` | Process mode: the call cannot be loaded in the child (it pickles in the caller, but the child cannot import its function or rebuild an argument), or the result cannot be rebuilt in the caller |
 
 Both exceptions keep their attribute through pickle and copy, so they can cross process
 boundaries themselves. Messages quote at most 60 characters of any value you passed, so
 a huge argument never ends up in a log. The error pickle raised, chained as the cause of
 the `PicklingError` for a call or a result that cannot be sent, or of the
-`UnpicklingError` for a result that cannot be rebuilt (sent back inside the child's
-traceback for a result), can quote more: its text is cut after 300 characters, and
+`UnpicklingError` for a call that cannot be loaded or a result that cannot be rebuilt
+(sent back inside the child's traceback for a call or a result), can quote more: its text is cut after 300 characters, and
 only its first ten notes are kept, each cut after 60 characters, then a count of the rest.
 That is done in place for the plain errors pickle raises (`TypeError`, `ValueError`,
 `RuntimeError`, `AttributeError`, `RecursionError`, `pickle.PicklingError` and a few
@@ -232,7 +259,7 @@ to the cause are not kept, since they can quote a value too.
 ## In async code
 
 Coroutines already have `asyncio.timeout()` (Python 3.11+) and `asyncio.wait_for()`, and
-`run` refuses coroutine functions with a pointer to them. For a blocking call, run `run`
+`run` refuses coroutine and async generator functions with a pointer to them. For a blocking call, run `run`
 in a worker thread so the event loop stays free; process mode then really stops the call:
 
 ```python

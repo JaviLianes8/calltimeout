@@ -9,7 +9,7 @@ from numbers import Real
 from typing import ParamSpec, TypeVar, cast, overload
 
 from ._api import RUNNERS, UNSET, Mode, _Unset, run
-from ._process import claim_child_target
+from ._child import claim_child_target
 from ._validate import check_call, check_mode, check_timeout
 
 P = ParamSpec("P")

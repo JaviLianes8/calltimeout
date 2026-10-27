@@ -8,6 +8,7 @@ import sys
 import time
 import types
 from pathlib import Path
+from typing import Any
 
 import _targets
 import pytest
@@ -100,11 +101,14 @@ def test_a_call_the_child_cannot_load_reports_the_real_error() -> None:
     exec("def hidden():\n    return 1\n", module.__dict__)
     sys.modules[module.__name__] = module
     try:
-        with pytest.raises(ModuleNotFoundError, match="calltimeout_parent_only") as info:
+        with pytest.raises(pickle.UnpicklingError, match="cannot be loaded in the child") as info:
             run(module.hidden, 30.0, mode="process")
     finally:
         del sys.modules[module.__name__]
-    assert "parcel.open()" in str(info.value.__cause__)  # failed while loading the call
+    assert "ModuleNotFoundError" in str(info.value)
+    cause = str(info.value.__cause__)  # the child's traceback, with pickle's error bounded
+    assert "parcel.open()" in cause
+    assert "No module named 'calltimeout_parent_only'" in cause
 
 
 def test_an_unpicklable_result_carries_the_childs_traceback_of_the_failure() -> None:
@@ -125,7 +129,8 @@ def test_a_reader_cut_short_counts_as_no_result() -> None:
         def recv_bytes(self) -> bytes:
             raise OSError("pipe broke")
 
-    assert _process._receive(Broken(), []) is None
+    alive: Any = types.SimpleNamespace(terminate=lambda: None, kill=lambda: None)
+    assert _process._receive(Broken(), [], alive, time.monotonic() + 30.0) is None
 
 
 def test_waiting_for_a_lost_childs_exit_stays_within_the_budget(
@@ -133,7 +138,7 @@ def test_waiting_for_a_lost_childs_exit_stays_within_the_budget(
 ) -> None:
     # The pipe reports no result while the child is still running: the exit code is
     # waited for only until the deadline, then it is a timeout, not a 30 second hang.
-    monkeypatch.setattr(_process, "_receive", lambda reader, ready: None)
+    monkeypatch.setattr(_process, "_receive", lambda *args: None)
     monkeypatch.setattr(_process, "_await", lambda reader, process, deadline: [reader])
     started = time.monotonic()
     with pytest.raises(CallTimeout):

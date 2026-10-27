@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-26
+## [1.0.0] - 2026-10-27
 
 The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed`,
 `RemoteTraceback` and `Mode`, with their parameter names, defaults and exception types,
@@ -28,7 +28,20 @@ on `main`.
   `str` subclass is read as the plain name.
 - `CallTimeout` and `CallCrashed` are shown and pickled as `calltimeout.CallTimeout` and
   `calltimeout.CallCrashed`, so a pickle never names a private module, and they keep
-  extra attributes (such as notes) through pickle and copy.
+  extra attributes (such as notes) through pickle and copy. `run` and `with_timeout` are
+  shown and pickled as `calltimeout.run` and `calltimeout.with_timeout` too (a stored
+  `functools.partial(run, ...)` named `calltimeout._api`).
+- `CallCrashed.exitcode` is typed `int`: it was `int | None`, though `run` raises
+  `CallCrashed` only once the child has exited, with its code. A `RemoteTraceback` built
+  with a text that is not a `str` shows it bounded; its `str()` raised `TypeError`.
+- Generator functions and async generator functions raise `TypeError` in `run` and
+  `with_timeout` (an async one with the pointer to `asyncio`), and so does a call that
+  returns an async generator. They were accepted: the call returned the generator at
+  once, and its body then ran with no time limit as it was iterated.
+- Thread mode: a call that ends after the budget ran out is a timeout, even when the
+  caller notices only later. A call holding the GIL could end after its deadline and
+  before the caller ran again, and its value was returned (a 1 ms budget gave values
+  from calls that ran 3 to 10 ms).
 - A real-number timeout whose conversion to `float` fails raises `TypeError` (the
   conversion's own error is chained as the cause).
 - A negative timeout too large for a `float` (`-10**400`) raises "timeout must not be
@@ -50,9 +63,12 @@ on `main`.
   reads, got past the check and failed inside the call (in process mode, after a child
   had started) with a `TypeError` from Python itself.
 - Process mode: the budget also covers pickling the call and starting the child, and a
-  call whose pickling used it up is never started. A child that cannot load the call
-  (a function the child cannot import under spawn or forkserver) reports that error
-  with its traceback instead of a crash with exit code 1. A child that dies while
+  call whose pickling used it up is never started. A call that pickles in the caller but
+  cannot be loaded in the child (a function defined under the main guard, in
+  `python -c` or a notebook, or in a module the child cannot import; an argument whose
+  rebuild raises) raises `pickle.UnpicklingError` ("the call cannot be loaded in the
+  child process", quoting the child's error briefly, its traceback chained as the cause)
+  instead of a crash with exit code 1. A child that dies while
   sending its result raises `CallCrashed`, and waiting for a crashed child's exit code
   never runs past the budget. A result that cannot be pickled raises
   `pickle.PicklingError` with the child's traceback of the failure, and a result that
@@ -64,6 +80,13 @@ on `main`.
   whole budget formatting it and ended in `CallTimeout`. The `UnpicklingError` of a
   result whose class the caller cannot import is now chained from a `RuntimeError` naming
   `ModuleNotFoundError`.
+- Process mode: the budget also covers receiving the result. On POSIX a long result is
+  written in two parts, and a child that stalled between or during them (stopped, or
+  blocked in a profile hook) blocked `run` for good; it is now stopped at the deadline
+  (terminated, and killed 1 second later) and the call raises `CallTimeout`.
+- Process mode: a child error whose pickle rebuilds as something other than an exception
+  arrives as the `RuntimeError` stand-in naming its type; `run` raised an
+  `AttributeError` or `TypeError` from inside calltimeout, and the child's error was lost.
 - Process mode: a call whose function or arguments cannot be pickled raises
   `pickle.PicklingError` before any process starts, chained from pickle's own error
   (which was raised as it was, a different type on each Python version). That error is
@@ -135,6 +158,20 @@ on `main`.
   10 ms timer: about 10 ticks lost, the last 120 to 130 ms late). On Linux a timer read
   in the instant between a tick and its delivery shows no time left, and the call then
   left it disarmed for good; it is now kept.
+- Signal mode: a `SIGALRM` taken as a call starts, before its timer is set (a tick of an
+  enclosing timer already on its way, also from an enclosing signal-mode call), goes to
+  the handler that was there before. It reached the call's own handler half set up: that
+  raised `NameError` and stayed installed for good (later code, even a plain
+  `time.sleep`, raised `NameError`), or it took the tick as its own and dropped it, so an
+  enclosing signal-mode deadline could be lost and the call run forever. A `SIGALRM`
+  that is not the call's own timer's (sent with `kill`) also goes to that handler.
+- Signal mode: an enclosing timer keeps its schedule over any number of calls. The call
+  reads and replaces it in one step, gives back the exact schedule it took, and waits
+  for a tick due within 0.2 ms before taking the timer (Linux 6.6 can drop a tick whose
+  timer is replaced in the instant it fires). Each call moved the timer by the time spent
+  reading and setting it, so over many calls a one-shot timer fired up to 18 ms early
+  (about 90,000 quick calls) and an interval timer drifted by milliseconds, lost ticks
+  (39 of 300 under calls that each timed out) and delivered some twice.
 - Thread mode measures the budget from the start of `run`, including starting the thread.
 - The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
   only exists from Python 3.11.

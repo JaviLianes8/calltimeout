@@ -10,7 +10,7 @@ import traceback
 import _targets
 import pytest
 
-from calltimeout import CallCrashed, CallTimeout, Mode, run
+from calltimeout import CallCrashed, CallTimeout, Mode, RemoteTraceback, run
 
 MODES: list[Mode] = ["thread", "process"]
 if sys.platform != "win32":
@@ -26,8 +26,8 @@ def test_call_timeout_survives_pickle_and_copy(budget: float) -> None:
         assert str(clone) == str(original)
 
 
-@pytest.mark.parametrize("exitcode", [3, -9, None])
-def test_call_crashed_survives_pickle_and_copy(exitcode: int | None) -> None:
+@pytest.mark.parametrize("exitcode", [3, -9, 0])
+def test_call_crashed_survives_pickle_and_copy(exitcode: int) -> None:
     original = CallCrashed(exitcode)
     for clone in (pickle.loads(pickle.dumps(original)), copy.deepcopy(original)):
         assert type(clone) is CallCrashed
@@ -74,3 +74,20 @@ def test_a_timeout_never_shows_the_private_signal_behind_it(mode: Mode, budget: 
     shown = "".join(traceback.format_exception(type(info.value), info.value, None))
     assert "Expired" not in shown
     assert "During handling" not in shown
+
+
+@pytest.mark.parametrize(
+    "text",
+    [None, 7, 2.5, b"bytes", ["a"], object(), "x" * 100_000],
+    ids=["none", "int", "float", "bytes", "list", "object", "long text"],
+)
+def test_a_remote_traceback_always_shows_whatever_text_it_was_given(text: object) -> None:
+    error = RemoteTraceback(text)  # type: ignore[arg-type]
+    if isinstance(text, str):
+        assert str(error) == text  # the child's traceback, whole
+    else:
+        assert 0 < len(str(error)) <= 64  # shown like any value: bounded
+    printed = "".join(traceback.format_exception(type(error), error, None))
+    assert "str() failed" not in printed
+    if type(text) is not object:
+        assert pickle.loads(pickle.dumps(error)).text == text

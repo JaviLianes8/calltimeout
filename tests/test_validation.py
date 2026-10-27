@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import math
+import numbers
 import sys
 import threading
-from collections.abc import Callable
+import time
+from collections.abc import AsyncIterator, Callable, Iterator
 from fractions import Fraction
 
 import _targets
@@ -24,6 +27,33 @@ async def _coroutine_function() -> int:
 
 def _returns_coroutine() -> object:
     return _coroutine_function()
+
+
+def _generator() -> Iterator[int]:
+    for step in range(3):
+        time.sleep(0.2)  # never inside a budget: the call returns before this runs
+        yield step
+
+
+async def _async_generator() -> AsyncIterator[int]:
+    yield 1
+
+
+def _returns_async_generator() -> object:
+    return _async_generator()
+
+
+class _HugeReal:
+    """A real number too large for a float whose own comparison fails too."""
+
+    def __float__(self) -> float:
+        raise OverflowError("too large for a float")
+
+    def __lt__(self, other: object) -> bool:
+        raise TypeError("cannot compare")
+
+
+numbers.Real.register(_HugeReal)
 
 
 @pytest.mark.parametrize("timeout", [True, "1", None, b"1", 1j])
@@ -134,3 +164,32 @@ def test_the_decorator_rejects_bad_settings_when_applied(decorate: Callable[[], 
 def test_the_decorator_rejects_a_coroutine_function() -> None:
     with pytest.raises(TypeError, match=r"asyncio\.timeout"):
         with_timeout(1.0)(_coroutine_function)
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    ("fn", "kind"),
+    [
+        (_generator, r"is a generator function: its body runs only as the generator is iterated"),
+        (functools.partial(_generator), r"is a generator function"),
+        (_async_generator, r"is an async generator function: use asyncio\.timeout"),
+    ],
+)
+def test_rejects_a_function_whose_body_the_call_would_not_run(
+    fn: Callable[[], object], kind: str, mode: Mode
+) -> None:
+    with pytest.raises(TypeError, match=kind):
+        _ = run(fn, 30.0, mode=mode)
+    with pytest.raises(TypeError, match=kind):
+        with_timeout(0.1)(fn)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_rejects_an_async_generator_returned_by_the_call(mode: Mode) -> None:
+    with pytest.raises(TypeError, match=r"returned an async generator: use asyncio\.timeout"):
+        run(_returns_async_generator, 30.0, mode=mode)
+
+
+def test_a_real_too_large_whose_comparison_fails_is_reported_above_the_limit() -> None:
+    with pytest.raises(ValueError, match=f"^timeout must be at most {threading.TIMEOUT_MAX} "):
+        run(pow, _HugeReal(), args=(2, 3))  # type: ignore[call-overload]

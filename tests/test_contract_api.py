@@ -5,6 +5,7 @@ Changing anything here is a breaking change and needs a new major version.
 
 from __future__ import annotations
 
+import functools
 import inspect
 import pickle
 import typing
@@ -62,10 +63,10 @@ def test_the_exceptions_extend_the_builtin_ones_callers_already_catch() -> None:
             "the call's process exited with code -9 before returning",
         ),
         (
-            CallCrashed(None),
+            CallCrashed(0),
             "exitcode",
-            None,
-            "the call's process exited with code None before returning",
+            0,
+            "the call's process exited with code 0 before returning",
         ),
     ],
 )
@@ -98,10 +99,14 @@ def test_remote_traceback_is_an_exception_whose_text_is_the_childs_traceback() -
 
 
 def test_public_objects_live_under_the_package_name() -> None:
-    assert CallTimeout.__module__ == CallCrashed.__module__ == "calltimeout"
-    assert RemoteTraceback.__module__ == "calltimeout"
-    for public in (run, with_timeout, CallTimeout, CallCrashed, RemoteTraceback):
-        assert pickle.loads(pickle.dumps(public)) is public
+    public = (run, with_timeout, CallTimeout, CallCrashed, RemoteTraceback)
+    assert {each.__module__ for each in public} == {"calltimeout"}
+    for each in public:
+        assert pickle.loads(pickle.dumps(each)) is each
+        assert b"calltimeout._" not in pickle.dumps(each)
+    stored = pickle.dumps(functools.partial(run, abs, 1.0))  # as a job queue keeps it
+    assert b"calltimeout._" not in stored
+    assert pickle.loads(stored)(args=(-3,)) == 3
 
 
 def test_the_package_has_no_runtime_dependencies() -> None:
