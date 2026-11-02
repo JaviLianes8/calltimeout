@@ -74,6 +74,23 @@ def test_instance_keys_override_is_preserved(proxy_depth: int, hidden_namespace:
 
 
 @pytest.mark.parametrize("proxy_depth", [0, 1, 2])
+def test_aliased_namespace_preserves_instance_keys_selection(proxy_depth: int) -> None:
+    class Parent(dict[str, int]):
+        pass
+
+    class Child(Parent):
+        __dict__ = Parent.__dict__["__dict__"]
+
+    source = Child(selected=1, other=2)
+    vars(source)["keys"] = lambda: ["selected"]
+    values: Mapping[str, int] = source
+    for _ in range(proxy_depth):
+        values = MappingProxyType(values)
+    assert run(lambda **kw: kw, 5, kwargs=values) == {"selected": 1}
+    assert list(dict.items(source)) == [("selected", 1), ("other", 2)]
+
+
+@pytest.mark.parametrize("proxy_depth", [0, 1, 2])
 def test_invalid_key_is_rejected_before_custom_value_lookup(proxy_depth: int) -> None:
     reads: list[object] = []
 

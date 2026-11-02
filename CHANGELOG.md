@@ -62,6 +62,9 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
 - Dictionary subclasses with inherited read behavior and dictionary-backed mapping
   proxies also avoid repeated source lookups for colliding keyword keys. Custom key
   selection and value lookup retain their semantics, including through proxies.
+- An instance's `keys()` selection is preserved when its dictionary subclass aliases
+  a parent's `__dict__` descriptor, including through nested mapping proxies. Such
+  aliases previously caused excluded keywords to be passed to the callable.
 - Validation and transport errors do not copy arbitrary exception text or notes.
   Callable and type names in other diagnostics remain bounded to 60 characters; a
   stand-in for an unpicklable callable exception keeps at most 300 characters of its

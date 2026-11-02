@@ -26,6 +26,7 @@ Progress:
 - [x] Current QA round 1: nine findings fixed in dfd6ba4 (2026-11-02)
 - [x] Current QA round 2: C-06 fixed in 75cb060 (2026-11-02)
 - [x] Current QA round 3: C-07 fixed in 33271de (2026-11-02)
+- [x] Current QA round 4: C-08 fixed (2026-11-02, commit identified below)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
 - [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
 - [x] Current laptop interpreter matrix and mutation verification (2026-11-02)
@@ -48,7 +49,7 @@ Progress:
 | 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-11-02` |
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
-| 15 | Gates each exit 0 | PASS: see current QA round 3 and Preparation verification below |
+| 15 | Gates each exit 0 | PASS: see current QA round 4 and Preparation verification below |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: original 58-mutant round retained in the linked table; ten mutations applied to the current source on 2026-11-02, all killed (table below) |
@@ -94,6 +95,15 @@ Eight new collision contracts first failed on the baseline with 124,750 and 7,99
 The original reviewer harness passes all 40 probes, including zero comparisons for both wrappers at 500, 1,000, 2,000 and 4,000 keys. The public API is unchanged and the behavior change is recorded in CHANGELOG.
 Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 447 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
 C-07 is fixed; none disputed. Independent re-verification remains pending.
+
+## QA lenses, 2026-11-02 round 4
+
+Baseline: `1afe973e4a6fb239fad13ffaecd02c0b4e746052`. Fix commit: this section's commit, titled `preserve keyword selection with aliased namespace descriptors`.
+
+C-08 (medium): stored-pair copying now requires the instance namespace descriptor to have the expected name and belong to the class that defines it in the MRO. Aliased or shadowed descriptors use ordinary mapping reads, preserving instance `keys()` selection directly and through nested proxies. The public API is unchanged; CHANGELOG records the behavior change.
+Three new public contract cases first failed on the baseline, passing the excluded `other` keyword at proxy depths 0, 1 and 2. All now pass and verify the source dictionary is unchanged. Targeted contracts: 60 passed, including the C-07 collision checks.
+Reviewer confirmation and robustness probes: 43 passed, including C-07 and C-08. Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 450 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
+C-08 is fixed; none disputed. Independent re-verification remains pending.
 
 ## Earlier evidence and QA lenses
 
@@ -141,11 +151,7 @@ Resumed at d30aa43 with a clean working tree. The earlier QA findings, fixes and
 
 ### Mutation verification on the current source
 
-Ten mutations applied individually to a scratch copy of the current runtime source,
-CPython 3.14.6, on 2026-11-02. Each listed contract first passed without its mutation,
-then failed by assertion with the mutation; the source was restored after each run.
-These replay M01 to M10 against the latest code (M08 now changes the copied-key check).
-All ten were killed, with no timeout, collection failure or surviving mutation.
+Ten mutations applied individually to a scratch copy of the current runtime source, CPython 3.14.6, on 2026-11-02. Each listed contract first passed without its mutation, then failed by assertion with the mutation; the source was restored after each run. These replay M01 to M10 against the latest code (M08 now changes the copied-key check). All ten were killed, with no timeout, collection failure or surviving mutation.
 
 | Id | Mutation | Result | Contract that failed |
 | --- | --- | --- | --- |
@@ -184,17 +190,11 @@ The `t` build runs with the GIL disabled, including after importing the test too
 
 ### Final archives
 
-The final archives were rebuilt after the documentation updates. Both contents checks,
-`twine check --strict` and the sdist's fresh-install consumer passed (four tests).
-The wheel is byte-identical to the one used in the upgrade and interpreter matrix.
+The final archives were rebuilt after the documentation updates. Both contents checks, `twine check --strict` and the sdist's fresh-install consumer passed (four tests). The wheel is byte-identical to the one used in the upgrade and interpreter matrix.
 
 - Wheel SHA-256: `ab614cc24fac75a69d1117347a0fcb83e5ea66f5067080235e4210ef236f9a7a`.
 - Sdist SHA-256: `82ba06d22be37927f273e529ecd5bc19353d246739e1cfb819ccdbd3a43fbbe9`.
-- All 69 Python source files are at most 200 lines. The earlier report sections are
-  preserved verbatim in their linked files, each under 200 lines and excluded from
-  both distributions. The main report retains the current mutation table.
-- The README badge matches the reference exactly. PyPI metadata for the five README
-  alternatives was fetched again on 2026-11-02; versions and release dates agree.
+- All 69 Python source files are at most 200 lines. The earlier report sections are preserved verbatim in their linked files, each under 200 lines and excluded from both distributions. The main report retains the current mutation table.
+- The README badge matches the reference exactly. PyPI metadata for the five README alternatives was fetched again on 2026-11-02; versions and release dates agree.
 
-Preparation items 1 to 15 and 18 are complete. Items 16 and 19 await independent
-verification; item 17's merge and publication remain pending.
+Preparation items 1 to 15 and 18 are complete. Items 16 and 19 await independent verification; item 17's merge and publication remain pending.
