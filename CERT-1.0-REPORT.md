@@ -26,6 +26,7 @@ Progress:
 - [x] Five QA lenses, round 6: every finding fixed (f477ccf, 3220523)
 - [x] Five QA lenses, round 7: every finding fixed (88d5474 to 05d15a6)
 - [x] Five QA lenses, round 8: every finding fixed (052f156 to be35644)
+- [x] Current QA round 1: nine findings fixed in dfd6ba4 (2026-11-02)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
 - [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
 - [x] Current laptop interpreter matrix and mutation verification (2026-11-02)
@@ -38,7 +39,7 @@ Progress:
 | 2 | `__all__` exact, no private imports in docs | PASS: `CallCrashed`, `CallTimeout`, `Mode`, `RemoteTraceback`, `run`, `with_timeout`; `tests/test_contract.py` |
 | 3 | Docstrings with runnable examples, doctests | PASS: every public name has a doctest (6, also run from the installed wheel; `Mode`'s section of the package docstring is run by `tests/test_contract.py`, since a docstring on the cached `Literal` would relabel the caller's identical aliases); README and GUIDE examples run as scripts by the tests with their printed output checked |
 | 4 | Typed end to end | PASS: `mypy --strict src tests` for the Windows, Linux and macOS platforms; `py.typed` shipped; a consumer script type-checked against the installed wheel |
-| 5 | Typed, documented, bounded errors | PASS: `CallTimeout` (`TimeoutError`), `CallCrashed` (`RuntimeError`), `TypeError` or `ValueError` before the call starts; quoted values cut at 60 characters, exceptions at 300 (60 in the message for a call or a result that cannot be sent or rebuilt, whose chained pickle error is cut at 300 in place), huge integers described by size |
+| 5 | Typed, documented, bounded errors | PASS: fixed validation messages, value-free transport causes and documented scope for propagated callable exceptions; current QA round 1 below |
 | 6 | Contract tests of every public name | PASS |
 | 7 | Real ground truth | PASS: 8 CPython and PEP documents fetched with a hash manifest, each fact checked against the running interpreter; pebble 5.2.3 run live as a second implementation |
 | 8 | Real e2e from the wheel | PASS: wheel and sdist built, inspected, installed in throwaway venvs and used from an empty folder; no CLI; PyPI 0.2.0 upgraded in place on 2026-11-02 |
@@ -48,11 +49,36 @@ Progress:
 | 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-11-02` |
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
-| 15 | Gates each exit 0 | PASS: see Preparation verification below |
+| 15 | Gates each exit 0 | PASS: see current QA round 1 and Preparation verification below |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: original 58-mutant round retained in the linked table; ten mutations applied to the current source on 2026-11-02, all killed (table below) |
 | 19 | Five independent QA lenses | Rounds 1 to 4: every finding of the five lenses fixed, at 3309979, at 00f6889 and 6e2c03c, at 2f962f3 to db26ef1, and at 726f948 to 388e62b; round 5: lens e's survivors pinned in 9f00374 and 5b84b46; round 6: every finding fixed in f477ccf and 3220523; round 7: every finding fixed in 88d5474 to 05d15a6; round 8: every finding fixed in 052f156 to be35644 (see QA lenses); re-verification pending |
+
+## QA lenses, 2026-11-02 round 1
+
+Baseline: `8693a159f551806d479ab3313fd5c9df6cfdf84a`.
+Fix commit: `dfd6ba4203b51385d3def3d3ce5c5a79c6c5cd36`.
+
+| Finding | Change and contract |
+| --- | --- |
+| A1 | Reject negative real values before float underflow; both public entry points tested. |
+| A2, C-01 | Conversion errors retain no original text, notes, cause or context; million-character errors tested. |
+| A3 | CHANGELOG, GUIDE and run docstring state that validation and keyword copying precede the budget. |
+| B-001 | Only a decorator's own child receives one-use wrapper bypass; generic process calls preserve inner deadlines, defaults and zero-budget no-call behavior. |
+| C-02 | Mapping iteration and lookup failures become safe TypeErrors, including at zero budget. |
+| C-03 | Guarded actual-type checks avoid hostile __class__ properties and preserve genuine subclasses and ABC registrations. |
+| C-04 | Invalid modes and all four transport directions omit caller text; transport causes discard notes, frames and chains without editing the original error. |
+| C-05 | Normalize string keys before insertion; collision contracts check operation counts and one read per value. |
+
+All nine findings are fixed; none disputed. Independent re-verification remains pending.
+The 22 new contract cases all failed on the baseline before implementation and now pass.
+Reviewer repros rerun against the fix: A1/A2, 3 passed; B-001, 3 passed; C validation
+and scaling, 11 passed, with zero key comparisons at 500 through 4,000 colliding keys.
+Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and
+pytest each exited 0; pytest: 405 passed, 53 skipped, with a 300-second per-test timeout
+and scratch basetemp. mypy --strict src tests also passed. POSIX and optional packaging
+checks were not rerun in this fix pass; their earlier evidence is retained below.
 
 ## Earlier evidence and QA lenses
 
