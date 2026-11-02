@@ -26,7 +26,7 @@ Progress:
 - [x] Current QA round 1: nine findings fixed in dfd6ba4 (2026-11-02)
 - [x] Current QA round 2: C-06 fixed in 75cb060 (2026-11-02)
 - [x] Current QA round 3: C-07 fixed in 33271de (2026-11-02)
-- [x] Current QA round 4: C-08 fixed (2026-11-02, commit identified below)
+- [x] Current QA round 4: C-08 fixed in 8aa8992 (2026-11-02)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
 - [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
 - [x] Current laptop interpreter matrix and mutation verification (2026-11-02)
@@ -98,7 +98,7 @@ C-07 is fixed; none disputed. Independent re-verification remains pending.
 
 ## QA lenses, 2026-11-02 round 4
 
-Baseline: `1afe973e4a6fb239fad13ffaecd02c0b4e746052`. Fix commit: this section's commit, titled `preserve keyword selection with aliased namespace descriptors`.
+Baseline: `1afe973e4a6fb239fad13ffaecd02c0b4e746052`. Fix commit: `8aa899233526e29c4ce8f6330d9e1aae88a874d2`.
 
 C-08 (medium): stored-pair copying now requires the instance namespace descriptor to have the expected name and belong to the class that defines it in the MRO. Aliased or shadowed descriptors use ordinary mapping reads, preserving instance `keys()` selection directly and through nested proxies. The public API is unchanged; CHANGELOG records the behavior change.
 Three new public contract cases first failed on the baseline, passing the excluded `other` keyword at proxy depths 0, 1 and 2. All now pass and verify the source dictionary is unchanged. Targeted contracts: 60 passed, including the C-07 collision checks.
