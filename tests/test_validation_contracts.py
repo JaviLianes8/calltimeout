@@ -5,6 +5,7 @@ from __future__ import annotations
 import traceback
 from collections.abc import Iterator, Mapping
 from fractions import Fraction
+from types import MappingProxyType
 from typing import Any
 
 import pytest
@@ -148,11 +149,21 @@ def test_normalized_keys_preserve_keyword_values() -> None:
     assert values.reads == 20
 
 
+class PlainDict(dict[str, int]):
+    pass
+
+
 @pytest.mark.parametrize("size", [500, 4000])
 @pytest.mark.parametrize("timeout", [0, 5])
-def test_existing_dict_keys_need_no_collision_comparisons(size: int, timeout: int) -> None:
+@pytest.mark.parametrize("wrapper", ["dict", "subclass", "proxy"])
+def test_existing_dict_keys_need_no_collision_comparisons(
+    size: int, timeout: int, wrapper: str
+) -> None:
     expected = {f"k{i}": i for i in range(size)}
     values: dict[str, int] = {CollidingKey(key): value for key, value in expected.items()}
+    if wrapper == "subclass":
+        values = PlainDict(values)
+    keywords = MappingProxyType(values) if wrapper == "proxy" else values
     original = list(values.items())
     called: list[bool] = []
 
@@ -162,7 +173,7 @@ def test_existing_dict_keys_need_no_collision_comparisons(size: int, timeout: in
         return keywords
 
     CollidingKey.comparisons = 0
-    result = run(capture, timeout, kwargs=values, default=None)
+    result = run(capture, timeout, kwargs=keywords, default=None)
     assert CollidingKey.comparisons == 0
     assert result == (expected if timeout else None)
     assert called == ([True] if timeout else [])

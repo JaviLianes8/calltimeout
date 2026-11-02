@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import gc
 import inspect
 import math
 import threading
 from collections.abc import Iterable, Mapping
 from numbers import Real
+from types import GetSetDescriptorType, MappingProxyType
 from typing import TypeVar, cast
 
 from ._text import call_name, type_name
@@ -105,22 +107,47 @@ def check_call(fn: object, args: object, kwargs: object) -> dict[str, object]:
     return _keywords(cast(Mapping[object, object], kwargs))
 
 
+def _stored_keywords(value: object) -> dict[object, object] | None:
+    # CPython exposes a proxy's backing mapping to GC traversal. If an interpreter
+    # does not expose exactly one referent, keep the ordinary mapping read path.
+    while type(value) is MappingProxyType:
+        referents = gc.get_referents(value)
+        if len(referents) != 1:
+            return None
+        value = referents[0]
+    if type(value) is dict:
+        return cast(dict[object, object], value)
+    # Custom metaclasses can hide overridden methods from static lookup.
+    if not _actual_type(value, dict) or type(type(value)) is not type:
+        return None
+    # A shadowed __dict__ can hide instance-level keys overrides from static lookup.
+    namespace = inspect.getattr_static(value, "__dict__", None)
+    if namespace is not None and type(namespace) is not GetSetDescriptorType:
+        return None
+    if all(
+        inspect.getattr_static(value, name) is inspect.getattr_static(dict, name)
+        for name in ("keys", "__getitem__", "__getattribute__")
+    ):
+        return cast(dict[object, object], value)
+    return None
+
+
 def _keywords(kwargs: Mapping[object, object]) -> dict[str, object]:
     # Read once and checked as read: a mapping whose views disagree, or change between
     # reads, cannot pass the check with one set of keys and call with another.
     copy: dict[str, object] = {}
     try:
-        # Exact dicts expose stored pairs without rehashing colliding subclass keys.
-        # Other mappings keep keys() semantics and defer value access until validation.
-        stored = type(kwargs) is dict
+        # Bypass items overrides only when keys and lookup use dictionary semantics.
+        # Other mappings defer value access until their keys have been validated.
+        stored = _stored_keywords(kwargs)
         keys = kwargs.keys()
-        pairs = kwargs.items() if stored else ((key, None) for key in keys)
+        pairs = dict.items(stored) if stored is not None else ((key, None) for key in keys)
         for key, value in pairs:
             if not _actual_type(key, str):
                 break
             # Normalize before insertion: user hashes and equality can collide or raise.
             name = str.__str__(cast(str, key))
-            copy[name] = value if stored else kwargs[key]
+            copy[name] = value if stored is not None else kwargs[key]
         else:
             return copy
     except Exception:

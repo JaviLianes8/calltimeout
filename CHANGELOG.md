@@ -59,6 +59,9 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
 - Existing built-in keyword dictionaries are copied from their stored key/value pairs,
   avoiding quadratic source lookups for colliding string-subclass keys, even with a
   zero timeout. Keys are still normalized and values preserved.
+- Dictionary subclasses with inherited read behavior and dictionary-backed mapping
+  proxies also avoid repeated source lookups for colliding keyword keys. Custom key
+  selection and value lookup retain their semantics, including through proxies.
 - Validation and transport errors do not copy arbitrary exception text or notes.
   Callable and type names in other diagnostics remain bounded to 60 characters; a
   stand-in for an unpicklable callable exception keeps at most 300 characters of its
