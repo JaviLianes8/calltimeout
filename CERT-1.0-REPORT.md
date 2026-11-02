@@ -163,7 +163,7 @@ The wheel is byte-identical to the one used in the upgrade and interpreter matri
 
 - Wheel SHA-256: `ab614cc24fac75a69d1117347a0fcb83e5ea66f5067080235e4210ef236f9a7a`.
 - Sdist SHA-256: `82ba06d22be37927f273e529ecd5bc19353d246739e1cfb819ccdbd3a43fbbe9`.
-- All 75 Python source files are at most 200 lines. The earlier report sections are
+- All 69 Python source files are at most 200 lines. The earlier report sections are
   preserved verbatim in their linked files, each under 200 lines and excluded from
   both distributions. The main report retains the current mutation table.
 - The README badge matches the reference exactly. PyPI metadata for the five README
