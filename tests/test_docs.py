@@ -118,7 +118,7 @@ def test_the_grace_period_in_the_docs_matches_the_code() -> None:
     assert f"up to {_process.GRACE:g} second to shut down" in _text("GUIDE.md")
 
 
-def test_the_message_limit_in_the_guide_matches_the_code() -> None:
+def test_the_name_limit_in_the_guide_matches_the_code() -> None:
     from calltimeout import _text as text
 
-    assert f"quote at most {text.LIMIT} characters" in _text("GUIDE.md")
+    assert f"bounded to {text.LIMIT} characters" in _text("GUIDE.md")

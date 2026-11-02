@@ -158,8 +158,8 @@ def test_a_closed_end_raises_pickling_error_and_spoils_no_later_call(
     others = [multiprocessing.Lock() for _ in extra]
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_wire_targets.count, 30.0, args=(CLOSED[kind](), *others), mode="process")
-    assert "cannot send a closed" in str(info.value)
-    assert type(info.value.__cause__) is ValueError  # cut in place, never the stand-in
+    assert str(info.value) == "the call cannot be sent to the child process: ValueError"
+    assert type(info.value.__cause__) is ValueError  # the safe standard category is preserved
     assert starts == []
     assert run(_wire_targets.count, 30.0, args=(1, 2), mode="process") == 2
 

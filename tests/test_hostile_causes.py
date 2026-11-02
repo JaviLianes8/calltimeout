@@ -82,7 +82,7 @@ def test_the_printed_error_of_a_call_that_cannot_be_sent_stays_short(
 
 @needs_pickling
 @pytest.mark.skipif(sys.version_info < (3, 11), reason="notes exist from Python 3.11")
-def test_the_stand_in_keeps_the_notes_pickle_added_bounded() -> None:
+def test_the_stand_in_discards_notes_pickle_added() -> None:
     bad = _wire_targets.RaisesOnReduce(_hostile_errors.ReadOnlyArgs())
     try:
         pickle.dumps([{"k": bad}])
@@ -94,6 +94,4 @@ def test_the_stand_in_keeps_the_notes_pickle_added_bounded() -> None:
     cause = info.value.__cause__
     assert type(cause) is RuntimeError
     notes = getattr(cause, "__notes__", None)
-    assert notes, "the stand-in lost pickle's notes"
-    assert any("item" in note for note in notes), notes
-    assert all(len(note) <= 63 for note in notes), notes
+    assert notes is None

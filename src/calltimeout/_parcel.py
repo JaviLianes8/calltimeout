@@ -111,7 +111,7 @@ def prepickle(method: str, call: Call) -> tuple[bytes | None, tuple[object, ...]
 
     A start that failed while pickling (seen on Windows) left a half-built Popen whose
     finalizer later closed handle numbers reused by the next call's pipe. Raises
-    pickle.PicklingError, chained from pickle's own error, for a call that cannot pickle,
+    pickle.PicklingError, chained from a value-free standard error, for a call that cannot pickle,
     and for one holding more descriptors than a forkserver start can pass. Returns the
     call's bytes and the objects held back from them, for the start to pickle; or no bytes
     and the call itself, when it holds objects that only pickle inside a start (locks,

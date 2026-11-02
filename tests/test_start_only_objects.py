@@ -5,7 +5,6 @@ from __future__ import annotations
 import multiprocessing
 import os
 import pickle
-import re
 import threading
 from collections.abc import Callable
 
@@ -93,14 +92,14 @@ def test_a_quoted_secret_is_cut_in_the_message_and_in_the_chained_cause() -> Non
 
 
 @needs_pickling
-def test_the_message_names_what_could_not_be_pickled() -> None:
+def test_the_message_names_the_error_category() -> None:
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_targets.echo, 30.0, args=(threading.Lock(),), mode="process")
-    assert "'_thread.lock'" in str(info.value)
+    assert str(info.value) == f"{SENT}: TypeError"
 
 
 @needs_pickling
-def test_the_notes_pickle_adds_are_the_first_ten_and_a_count_of_the_rest() -> None:
+def test_the_notes_pickle_adds_are_discarded() -> None:
     with pytest.raises(pickle.PicklingError) as info:
         run(
             _targets.echo,
@@ -109,11 +108,7 @@ def test_the_notes_pickle_adds_are_the_first_ten_and_a_count_of_the_rest() -> No
             mode="process",
         )
     notes = getattr(info.value.__cause__, "__notes__", None)
-    if not notes:
-        pytest.skip("this Python adds no notes to pickling errors")
-    assert len(notes) == 11, notes
-    assert all(len(note) <= 63 for note in notes[:10]), notes
-    assert re.fullmatch(r"\.\.\. and \d+ more notes", notes[10]), notes
+    assert notes is None
 
 
 @needs_pickling
@@ -148,7 +143,8 @@ def test_a_call_that_pickles_for_the_rehearsal_but_not_for_the_start_raises_pick
     args = (lock, once) if lock_first else (once, lock)
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_wire_targets.count, 30.0, args=args, mode="process")
-    assert "pickles only once" in str(info.value)
+    assert "pickles only once" not in str(info.value)
+    assert str(info.value.__cause__) == "transport operation failed"
     assert type(info.value.__cause__) is type(once.error)
     assert info.value.__context__ in (None, info.value.__cause__)
     for _ in range(3):
@@ -161,4 +157,4 @@ def test_the_error_of_a_start_that_cannot_pickle_the_call_is_bounded() -> None:
     with pytest.raises(pickle.PicklingError, match=SENT) as info:
         run(_wire_targets.count, 30.0, args=(multiprocessing.Lock(), once), mode="process")
     assert len(str(info.value)) <= len(SENT) + 2 + 63
-    assert len(str(info.value.__cause__)) == 303
+    assert str(info.value.__cause__) == "transport operation failed"

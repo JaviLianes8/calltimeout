@@ -9,7 +9,7 @@ from numbers import Real
 from typing import ParamSpec, TypeVar, cast, overload
 
 from ._api import RUNNERS, UNSET, Mode, _Unset, run
-from ._child import claim_child_target
+from ._child import DecoratorCall, claim_child_target
 from ._validate import check_call, check_mode, check_timeout
 
 P = ParamSpec("P")
@@ -63,9 +63,9 @@ def _process_target(wrapper: Callable[..., R], fn: Callable[..., R]) -> Callable
     # fork nothing is pickled and the call runs fn either way.
     found = _by_name(wrapper)
     if found is wrapper:
-        return wrapper
+        return DecoratorCall(wrapper)
     through_class = _through_class(found, wrapper, fn)
-    return fn if through_class is None else cast("Callable[..., R]", through_class)
+    return fn if through_class is None else DecoratorCall(cast("Callable[..., R]", through_class))
 
 
 def _through_class(found: object, wrapper: object, fn: Callable[..., R]) -> object:

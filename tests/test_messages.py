@@ -14,18 +14,18 @@ from calltimeout import run, with_timeout
 NAMES = "expected one of 'thread', 'process', 'signal'"
 
 
-def test_a_quoted_value_of_exactly_60_characters_is_kept_whole() -> None:
+def test_an_invalid_mode_of_58_characters_is_not_quoted() -> None:
     mode = "m" * 58  # its repr, quotes included, is 60 characters
     with pytest.raises(ValueError) as info:
         run(_targets.echo, 1.0, args=("",), mode=mode)  # type: ignore[call-overload]
-    assert str(info.value) == f"unknown mode '{mode}': {NAMES}"
+    assert str(info.value) == f"unknown mode: {NAMES}"
 
 
-def test_a_quoted_value_of_61_characters_is_cut_after_60() -> None:
+def test_an_invalid_mode_of_59_characters_is_not_quoted() -> None:
     mode = "m" * 59
     with pytest.raises(ValueError) as info:
         run(_targets.echo, 1.0, args=("",), mode=mode)  # type: ignore[call-overload]
-    assert str(info.value) == f"unknown mode '{mode}...: {NAMES}"
+    assert str(info.value) == f"unknown mode: {NAMES}"
 
 
 def test_an_unpicklable_result_with_a_huge_error_gets_a_bounded_message() -> None:

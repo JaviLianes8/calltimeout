@@ -2,22 +2,38 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextvars import ContextVar
 from multiprocessing.connection import Connection
-from typing import cast
+from typing import Generic, TypeVar, cast
 
 from ._parcel import Parcel
 from ._validate import reject_coroutine
 from ._wire import pack_error, pack_result, unloadable
 
-# The target this child process was started for, so a decorated function knows it is
-# already inside its own child and must not start another one.
-_targets: list[object] = []
+T = TypeVar("T")
+_authorized: ContextVar[object] = ContextVar("calltimeout_decorator_target", default=None)
+
+
+class DecoratorCall(Generic[T]):
+    """Authorize one wrapper bypass for a child started by that wrapper itself."""
+
+    def __init__(self, target: Callable[..., T]) -> None:
+        self.target = target
+        self.__qualname__ = getattr(target, "__qualname__", "<unnamed callable>")
+
+    def __call__(self, *args: object, **kwargs: object) -> T:
+        token = _authorized.set(self.target)
+        try:
+            return self.target(*args, **kwargs)
+        finally:
+            _authorized.reset(token)
 
 
 def claim_child_target(fn: object) -> bool:
-    """Return True once if fn is the call this child process was started to run."""
-    if _targets and _targets[-1] is fn:
-        _targets.pop()
+    """Consume the explicit authorization carried by a decorator's own process call."""
+    if _authorized.get() is fn:
+        _authorized.set(None)
         return True
     return False
 
@@ -31,7 +47,6 @@ def _outcome(parcel: Parcel) -> bytes:
         except Exception as problem:
             error = unloadable(problem)
         else:
-            _targets.append(fn)
             return pack_result(reject_coroutine(fn(*args, **kwargs)))
         raise error from error.__cause__  # outside that handler: no unbounded context
     except BaseException as exc:

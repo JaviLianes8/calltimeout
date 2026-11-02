@@ -6,9 +6,9 @@ import pickle
 import traceback
 from typing import TypeVar, cast
 
-from ._causes import DETAIL, bounded, exact_text, full_type_name
+from ._causes import DETAIL, bounded, full_type_name
 from ._errors import RemoteTraceback
-from ._text import LIMIT, call_name, cut, type_name
+from ._text import cut, type_name
 
 SENT = "the call cannot be sent to the child process"
 LOADED = "the call cannot be loaded in the child process"
@@ -19,13 +19,13 @@ E = TypeVar("E", bound=pickle.PickleError)
 
 
 def _about(kind: type[E], what: str, problem: Exception) -> E:
-    """A documented pickling error quoting pickle's, which is bounded and chained as its cause.
+    """A documented pickling error with a value-free cause.
 
     Raise it with ``raise error from error.__cause__`` outside the handler of problem, so
     the unbounded original is not kept as its context either.
     """
     cause = bounded(problem)
-    error = kind(f"{what}: {_detail(cause, LIMIT)}")
+    error = kind(f"{what}: {type(cause).__name__}")
     error.__cause__ = cause
     return error
 
@@ -47,19 +47,13 @@ def too_many(passed: int, limit: int) -> pickle.PicklingError:
     return pickle.PicklingError(f"{SENT}: {held} and a forkserver start passes at most {limit}")
 
 
-def _detail(exc: BaseException, limit: int = DETAIL) -> str:
-    text = exact_text(exc, repr)
-    if text is None:
-        text = f"<{call_name(type(exc))} whose repr failed>"
-    return cut(text, limit)
-
-
 def _formatted(exc: BaseException) -> str:
     try:
         return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     except Exception as problem:
         # Its type's own attributes can raise: the error is still sent, without the text.
-        return f"<the child's traceback could not be formatted: {_detail(problem)}>\n"
+        category = type(bounded(problem)).__name__
+        return f"<the child's traceback could not be formatted: {category}>\n"
 
 
 def pack_error(exc: BaseException) -> bytes:
@@ -77,7 +71,8 @@ def pack_error(exc: BaseException) -> bytes:
         except Exception:
             message = "<str() failed>"
         name = cut(full_type_name(exc))
-        stand_in = RuntimeError(f"{name}: {message} (not picklable: {_detail(problem)})")
+        category = type(bounded(problem)).__name__
+        stand_in = RuntimeError(f"{name}: {message} (not picklable: {category})")
         data = pickle.dumps((False, stand_in, text))
     return data
 
@@ -89,8 +84,7 @@ def pack_result(value: object) -> bytes:
     except Exception as problem:
         error = _about(pickle.PicklingError, SENT_BACK, problem)
     try:
-        # Raised, so the traceback text sent along shows where pickling failed (the
-        # bounded cause keeps its frames and the notes newer Pythons add about which item).
+        # Only library frames enter this traceback; caller hooks may contain secrets.
         raise error from error.__cause__
     except pickle.PicklingError as raised:
         return pack_error(raised)

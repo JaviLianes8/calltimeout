@@ -43,43 +43,34 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
   before the caller ran again, and its value was returned (a 1 ms budget gave values
   from calls that ran 3 to 10 ms).
 - A real-number timeout whose conversion to `float` fails raises `TypeError` (the
-  conversion's own error is chained as the cause).
+  conversion's own error is not retained as a cause or context).
 - A negative timeout too large for a `float` (`-10**400`) raises "timeout must not be
   negative"; it was reported as above `threading.TIMEOUT_MAX`.
-- Error messages are bounded: a quoted value or name is cut after 60 characters, a
-  quoted exception after 300 (60 for pickle's error about a call or a result that cannot
-  be sent, or a result that cannot be rebuilt, which can quote an argument or the
-  result), and an integer of more than 64 bits is described by its size instead of
-  printed.
-  A name or text that is a `str` subclass is measured as a plain `str`, so one that lies
-  about its length is cut too (a type or function name of a million characters went whole
-  into argument errors, the coroutine error, thread and process names, and the
-  `RuntimeError` standing in for a child's unpicklable error). A type whose name lookup
-  raises, or gives something other than text, is named `<unnamed type>` (or
-  `<unnamed callable>`) instead of that error escaping from `run`.
-- `kwargs` is read once into a plain `dict` in the caller, before the call starts, and its
-  keys are checked on that copy, so the call gets exactly the keys that were checked. A
-  mapping whose iteration hides keys that `keys()` returns, or one that changes between
-  reads, got past the check and failed inside the call (in process mode, after a child
-  had started) with a `TypeError` from Python itself.
+- Tiny negative real-number timeouts are rejected before float conversion can round
+  them to zero, including `Fraction(-1, 10**400)` in both public entry points.
+- Invalid mode messages list valid names without quoting the input. Timeout conversion
+  and keyword mapping failures use fixed, value-free diagnostics and retain no original
+  cause or context. Ordinary mapping-access failures now raise `TypeError`.
+- Validation checks actual types without consulting overridable `__class__` properties,
+  while accepting genuine subclasses and registered real-number and mapping types.
+- `kwargs` is read once into a plain `dict` before the budget starts. Keys are validated
+  and string subclasses normalized before insertion, so overridden hashes and equality
+  cannot cause quadratic insertion work. Mapping views cannot bypass key validation.
+- Validation and transport errors do not copy arbitrary exception text or notes.
+  Callable and type names in other diagnostics remain bounded to 60 characters; a
+  stand-in for an unpicklable callable exception keeps at most 300 characters of its
+  message. Ordinary callable exceptions and remote tracebacks retain their text.
 - Process mode: the budget also covers pickling the call and starting the child, and a
   call whose pickling used it up is never started. A call that pickles in the caller but
   cannot be loaded in the child (a function defined under the main guard, in
   `python -c` or a notebook, or in a module the child cannot import; an argument whose
   rebuild raises) raises `pickle.UnpicklingError` ("the call cannot be loaded in the
-  child process", quoting the child's error briefly, its traceback chained as the cause)
+  child process", with a safe category and library traceback chained as the cause)
   instead of a crash with exit code 1. A child that dies while
   sending its result raises `CallCrashed`, and waiting for a crashed child's exit code
   never runs past the budget. A result that cannot be pickled raises
-  `pickle.PicklingError` with the child's traceback of the failure, and a result that
-  cannot be rebuilt raises `pickle.UnpicklingError`; pickle's error behind either is
-  bounded as for a call that cannot be sent (below), in the child's traceback text for a
-  result that cannot be sent back. It was chained whole: a result nested 50,000 lists
-  deep sent back a traceback of over a million characters on Python 3.14, and an
-  argument with thousands of huge notes, returned as the result under fork, spent the
-  whole budget formatting it and ended in `CallTimeout`. The `UnpicklingError` of a
-  result whose class the caller cannot import is now chained from a `RuntimeError` naming
-  `ModuleNotFoundError`.
+  `pickle.PicklingError` with the child's library traceback, and a result that cannot
+  be rebuilt raises `pickle.UnpicklingError`. Both use value-free transport causes.
 - Process mode: the budget also covers receiving the result. On POSIX a long result is
   written in two parts, and a child that stalled between or during them (stopped, or
   blocked in a profile hook) blocked `run` for good; it is now stopped at the deadline
@@ -88,15 +79,11 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
   arrives as the `RuntimeError` stand-in naming its type; `run` raised an
   `AttributeError` or `TypeError` from inside calltimeout, and the child's error was lost.
 - Process mode: a call whose function or arguments cannot be pickled raises
-  `pickle.PicklingError` before any process starts, chained from pickle's own error
-  (which was raised as it was, a different type on each Python version). That error is
-  bounded: its text is cut after 300 characters, and only its first ten notes are kept,
-  each cut after 60 characters, followed by a count of the rest. The plain errors pickle
-  raises (`TypeError`, `ValueError`, `RuntimeError`, `pickle.PicklingError` and a few
-  more, exactly those types) are cut in place; any other (an argument's `__reduce__` can
-  raise a subclass, an error with a `__str__` of its own, a type that cannot be named) is
-  replaced as the cause by a `RuntimeError` naming its type and quoting its text, read
-  once. Errors chained to it are not kept, since they can quote the argument too. A call
+  `pickle.PicklingError` before any process starts, chained from a fresh standard
+  exception with fixed text. The cause preserves only a safe standard error category;
+  custom errors use `RuntimeError`. Original text, notes, frames and exception chains
+  are discarded without mutating the original error. This also applies to call loading,
+  result sending and result rebuilding failures. A call
   holding objects that `multiprocessing` only pickles while a child starts (locks,
   queues, shared values), any number of them, is first rehearsed as the start will
   pickle it, so one whose contents cannot pickle (a `Value` guarded by a
@@ -129,6 +116,9 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
   kept its child's process object, and its two descriptors or handles, alive in a
   reference cycle until the next garbage collection, so a loop of failing calls could
   run out of file descriptors (`OSError: [Errno 24] Too many open files`).
+- A generic process-mode `run` preserves a supplied callable's process timeout
+  decorator, including its independent deadline, fallback and zero-budget no-call rule.
+  Wrapper bypass is authorized once only by a child call initiated by that decorator.
 - `with_timeout` in process mode sends a callable that pickles by value (a
   `functools.partial`, a callable object) as it is, as `run` does; it failed with
   `AttributeError` under spawn and forkserver.
@@ -172,7 +162,8 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
   reading and setting it, so over many calls a one-shot timer fired up to 18 ms early
   (about 90,000 quick calls) and an interval timer drifted by milliseconds, lost ticks
   (39 of 300 under calls that each timed out) and delivered some twice.
-- Thread mode measures the budget from the start of `run`, including starting the thread.
+- Every mode starts its budget after argument validation and keyword copying. Those
+  caller-side hooks are not interrupted. Thread mode includes starting the thread.
 - The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
   only exists from Python 3.11.
 - Every public name has a docstring with an example that runs as a doctest, `Mode` in

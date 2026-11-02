@@ -16,7 +16,7 @@ from calltimeout import run
 SENT_BACK = "the call's result cannot be sent back: "
 REBUILT = "the call's result cannot be rebuilt in this process: "
 
-# The whole printed chain: two short tracebacks, a cut text and ten cut notes.
+# The whole printed chain contains only fixed transport diagnostics and library frames.
 PRINTED = 10_000
 
 
@@ -51,14 +51,15 @@ def _notes_pickle_leaves(value: object) -> int:
 
 
 @pytest.mark.skipif(sys.version_info < (3, 11), reason="traceback prints notes from 3.11")
-def test_the_notes_of_an_error_about_a_result_are_bounded_and_counted() -> None:
+def test_the_notes_of_an_error_about_a_result_are_discarded() -> None:
     started = time.monotonic()
     notes = _notes_pickle_leaves(_result_targets.noted_unpicklable(2_000, 5_000))
     assert notes in (2_000, 2_001), notes
     error = _sent_back_error(_result_targets.noted_unpicklable, 2_000, 5_000)
     printed = _printed(error)
     assert len(printed) < PRINTED, len(printed)
-    assert f"... and {notes - 10} more notes" in printed
+    assert "more notes" not in printed
+    assert "n" * 20 not in printed
     assert time.monotonic() - started < 30.0
 
 
@@ -82,5 +83,5 @@ def test_a_huge_error_rebuilding_a_result_is_quoted_briefly_and_chained_cut() ->
     _assert_message_quotes_at_most_60(error, REBUILT)
     assert error.__context__ is None
     assert isinstance(error.__cause__, ValueError)
-    assert len(str(error.__cause__)) == 303
+    assert str(error.__cause__) == "transport operation failed"
     assert len(_printed(error)) < PRINTED

@@ -28,7 +28,7 @@ def test_a_child_error_that_rebuilds_as_something_else_arrives_as_a_stand_in(
         run(target, 30.0, mode="process")  # type: ignore[call-overload]
     message = str(info.value)
     assert message.startswith("_child_targets.RebuiltAs"), message
-    assert ": the real error (not picklable: TypeError('it rebuilds as " in message
+    assert message.endswith(": the real error (not picklable: TypeError)")
     assert isinstance(info.value.__cause__, RemoteTraceback)
     assert "the real error" in str(info.value.__cause__)  # the child's own traceback
 
@@ -56,11 +56,11 @@ def test_a_function_the_child_cannot_find_raises_a_bounded_unpickling_error() ->
     finally:
         delattr(_child_targets, name)
     message = str(info.value)
-    assert message.startswith(LOADED + "AttributeError("), message
+    assert message == LOADED + "AttributeError", message
     assert len(message) <= len(LOADED) + 63
     assert isinstance(info.value.__cause__, RemoteTraceback)
     assert len(str(info.value.__cause__)) < 5_000
-    assert "only_in_the_caller_xxx" in str(info.value.__cause__)
+    assert "only_in_the_caller" not in str(info.value.__cause__)
 
 
 @pytest.mark.skipif(FORK, reason="fork pickles nothing on the way in")
@@ -70,7 +70,7 @@ def test_an_argument_that_fails_to_rebuild_in_the_child_raises_a_bounded_unpickl
     message = str(info.value)
     assert message.startswith(LOADED), message
     assert len(message) <= len(LOADED) + 63
-    assert "KeyError" in str(info.value.__cause__)
+    assert "RuntimeError: transport operation failed" in str(info.value.__cause__)
     assert len(str(info.value.__cause__)) < 5_000
 
 

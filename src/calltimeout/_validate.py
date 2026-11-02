@@ -7,9 +7,9 @@ import math
 import threading
 from collections.abc import Iterable, Mapping
 from numbers import Real
-from typing import TypeVar
+from typing import TypeVar, cast
 
-from ._text import call_name, shown, type_name
+from ._text import call_name, type_name
 
 T = TypeVar("T")
 
@@ -20,27 +20,41 @@ _ASYNC_HINT = (
 )
 
 
+def _actual_type(value: object, expected: type) -> bool:
+    try:
+        return issubclass(type(value), expected)
+    except Exception:
+        return False  # ABC registration may consult a custom metaclass.
+
+
 def _is_negative(number: Real) -> bool:
-    """For a number too large for a float, whose sign float() could not tell."""
+    """Read the original sign before float conversion can overflow or underflow."""
     try:
         return bool(number < 0)
     except Exception:
-        return False  # its own comparison failed: reported as too large, as before
+        return False  # Float conversion still determines whether this number is usable.
 
 
 def check_timeout(timeout: object) -> float:
     """Return the budget as a float, or raise if it is not a usable number of seconds."""
-    if isinstance(timeout, bool) or not isinstance(timeout, Real):
+    if type(timeout) is bool or not _actual_type(timeout, Real):
         raise TypeError(f"timeout must be a number of seconds, not {type_name(timeout)}")
+    number = cast(Real, timeout)
+    if _is_negative(number):
+        raise ValueError("timeout must not be negative")
     try:
-        seconds = float(timeout) + 0.0  # + 0.0 turns -0.0 into 0.0
+        seconds = float(number) + 0.0  # + 0.0 turns -0.0 into 0.0
     except OverflowError:
-        if _is_negative(timeout):
-            raise ValueError("timeout must not be negative") from None
-        raise ValueError(f"timeout must be at most {threading.TIMEOUT_MAX} seconds") from None
-    except Exception as exc:
-        # A Real whose own conversion fails: still a bad argument, reported as one.
-        raise TypeError(f"timeout {type_name(timeout)} cannot be read as seconds") from exc
+        error: Exception = ValueError(f"timeout must be at most {threading.TIMEOUT_MAX} seconds")
+    except Exception:
+        error = TypeError("timeout cannot be read as seconds")
+    else:
+        return _check_seconds(seconds)
+    # Outside the handler: even the suppressed context must not retain caller text.
+    raise error
+
+
+def _check_seconds(seconds: float) -> float:
     if math.isnan(seconds):
         raise ValueError("timeout must be a number, not NaN")
     if seconds < 0:
@@ -82,30 +96,46 @@ def check_call(fn: object, args: object, kwargs: object) -> dict[str, object]:
     if kind is not None:
         # Named, not repr'd: the repr of a partial would quote its bound arguments.
         raise TypeError(f"{call_name(fn)} is {kind}")
-    if not isinstance(args, tuple):
+    if not _actual_type(args, tuple):
         raise TypeError(f"args must be a tuple, not {type_name(args)}")
     if kwargs is None:
         return {}
-    if not isinstance(kwargs, Mapping):
+    if not _actual_type(kwargs, Mapping):
         raise TypeError(f"kwargs must be a mapping, not {type_name(kwargs)}")
+    return _keywords(cast(Mapping[object, object], kwargs))
+
+
+def _keywords(kwargs: Mapping[object, object]) -> dict[str, object]:
     # Read once and checked as read: a mapping whose views disagree, or change between
     # reads, cannot pass the check with one set of keys and call with another.
-    copy = dict(kwargs)
-    if not all(isinstance(key, str) for key in copy):
-        raise TypeError("kwargs keys must be strings")
-    return copy
+    copy: dict[str, object] = {}
+    try:
+        keys = kwargs.keys()  # Match mapping copy semantics even when __iter__ hides keys.
+        for key in keys:
+            if not _actual_type(key, str):
+                break
+            # Normalize before insertion: user hashes and equality can collide or raise.
+            name = str.__str__(cast(str, key))
+            copy[name] = kwargs[key]
+        else:
+            return copy
+    except Exception:
+        error = TypeError("kwargs mapping cannot be read")
+    else:
+        error = TypeError("kwargs keys must be strings")
+    raise error
 
 
 def check_mode(mode: object, modes: Iterable[str]) -> str:
     """Return the mode as a plain str, or raise TypeError or ValueError."""
-    if not isinstance(mode, str):
+    if not _actual_type(mode, str):
         raise TypeError(f"mode must be a str, not {type_name(mode)}")
     # A str subclass cannot change how the name compares or hashes from here on.
-    name = str.__str__(mode)
+    name = str.__str__(cast(str, mode))
     names = list(modes)
     if name not in names:
         expected = ", ".join(repr(each) for each in names)
-        raise ValueError(f"unknown mode {shown(name)}: expected one of {expected}")
+        raise ValueError(f"unknown mode: expected one of {expected}")
     return name
 
 

@@ -15,7 +15,13 @@ checks, and the ones on `fn`, `args`, `kwargs` and `mode`, happen before anythin
 starts, in every mode. `mode` is one of the three names of `Mode`,
 `Literal["thread", "process", "signal"]`, which you can use to annotate your own
 wrappers. `kwargs` is copied into a plain `dict` in the caller before the call starts, so
-a mapping changed later does not affect the call.
+a mapping changed later does not affect the call. String-subclass keys are normalized
+before insertion, so dictionary insertion uses base-string hashing and equality.
+Ordinary failures while reading the mapping raise `TypeError`.
+
+Validation and keyword copying precede the budget in every mode. User-defined numeric
+conversion and mapping hooks run in the caller and are not interrupted. The budget
+starts after those checks; thread startup is included.
 
 The budget covers the call itself, so `fn` must do its work when called. A coroutine
 function or an async generator function raises `TypeError` with a pointer to `asyncio`,
@@ -95,7 +101,7 @@ that never returns blocks it).
   `pickle.PicklingError` before any process starts.
 - Under spawn and forkserver a call that cannot be pickled (a lambda, a thread lock, a
   pool, an argument nested too deeply) raises `pickle.PicklingError` before any process
-  starts, chained from pickle's own error, whose type depends on the Python version.
+  starts, chained from a fresh exception containing only a safe category and fixed text.
   A call holding locks or queues is rehearsed as the start will pickle it, so one whose
   contents cannot pickle (a `Value` guarded by a `threading.Lock`) fails the same way.
   One that still fails when the start pickles it again (an object that pickles only once,
@@ -106,8 +112,8 @@ that never returns blocks it).
 - Under spawn and forkserver a call that pickles in the caller but cannot be loaded in
   the child (a function defined under `if __name__ == "__main__":`, in `python -c` or a
   notebook, or in a module the child cannot import; an argument whose rebuild raises)
-  raises `pickle.UnpicklingError`, quoting the child's error briefly, with the child's
-  traceback chained as its cause.
+  raises `pickle.UnpicklingError` with a safe error category and the child's
+  library traceback chained as its cause.
 - The child process is named `calltimeout:<function>`, like the thread of thread mode.
 - A child that exits without a result (a crash, `os._exit`, the out-of-memory killer)
   raises `CallCrashed` with its exit code as soon as it is gone, not a timeout, and never
@@ -213,6 +219,9 @@ method of a module-level class works too, as an instance method, a `staticmethod
 callable that pickles by value (a `functools.partial`, a callable object) is sent as it is.
 Each call runs in its own child, also a call made from inside the function's own child
 (a recursive function gets a new child, with its own budget, for every level).
+Passing a decorated function to `run(..., mode="process")` preserves the decorator's
+independent timeout, fallback and zero-budget guarantee. Only the child started by
+that decorator itself may bypass its wrapper once to execute the body.
 
 ```python
 import time
@@ -235,7 +244,7 @@ print(lookup("id"))  # None
 |---|---|
 | `CallTimeout` (a `TimeoutError`) | The budget ran out and no default was given |
 | `CallCrashed` (a `RuntimeError`) | Process mode: the child exited without a result |
-| `TypeError` | `timeout` is not a real number (or one that fails to convert to `float`), `fn` is not callable or is a coroutine, async generator or generator function, `args` is not a tuple, `kwargs` is not a mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine or an async generator |
+| `TypeError` | `timeout` is not a real number (or one that fails to convert to `float`), `fn` is not callable or is a coroutine, async generator or generator function, `args` is not a tuple, `kwargs` is not a readable mapping of `str` keys, `mode` is not a `str`, or the call returned a coroutine or an async generator |
 | `ValueError` | `timeout` is negative, NaN or above `threading.TIMEOUT_MAX`, or `mode` is not one of the three names |
 | `RuntimeError` | Signal mode outside the main thread, or with a `SIGALRM` handler set outside Python; process mode: the call raised an exception that cannot be pickled, or that would arrive as something other than an exception (raised in its place, naming its type) |
 | `NotImplementedError` | Signal mode on Windows |
@@ -243,18 +252,21 @@ print(lookup("id"))  # None
 | `pickle.UnpicklingError` | Process mode: the call cannot be loaded in the child (it pickles in the caller, but the child cannot import its function or rebuild an argument), or the result cannot be rebuilt in the caller |
 
 Both exceptions keep their attribute through pickle and copy, so they can cross process
-boundaries themselves. Messages quote at most 60 characters of any value you passed, so
-a huge argument never ends up in a log. The error pickle raised, chained as the cause of
-the `PicklingError` for a call or a result that cannot be sent, or of the
-`UnpicklingError` for a call that cannot be loaded or a result that cannot be rebuilt
-(sent back inside the child's traceback for a call or a result), can quote more: its text is cut after 300 characters, and
-only its first ten notes are kept, each cut after 60 characters, then a count of the rest.
-That is done in place for the plain errors pickle raises (`TypeError`, `ValueError`,
-`RuntimeError`, `AttributeError`, `RecursionError`, `pickle.PicklingError` and a few
-more, exactly those types). Any other error, such as one an argument's own `__reduce__`
-raised (a subclass, one with a `__str__` of its own), is replaced as the cause by a
-`RuntimeError` naming its type and quoting its text, bounded the same way. Errors chained
-to the cause are not kept, since they can quote a value too.
+boundaries themselves. Invalid mode errors list the accepted names without echoing the
+supplied value. Failed timeout conversions and mapping reads produce fixed `TypeError`
+messages without retaining the original exception as a cause or context.
+
+Transport diagnostics identify the operation and a safe standard exception category.
+Their causes contain only fixed text: original messages, notes, traceback frames and
+exception chains are discarded, including errors from pickling or rebuilding either
+the call or its result. Custom exception types become `RuntimeError` causes. Original
+exceptions are not modified. Truncation alone would still expose short secrets.
+
+These protections apply to library-generated validation and transport diagnostics.
+Exceptions deliberately raised by the callable retain their own messages and, in
+process mode, their remote traceback; that text may contain caller data. Callable and
+type names used in other diagnostics are bounded to 60 characters, and the stand-in
+for an unpicklable callable exception keeps up to 300 characters of its message.
 
 ## In async code
 

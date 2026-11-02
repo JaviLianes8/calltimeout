@@ -5,7 +5,6 @@ from __future__ import annotations
 import multiprocessing
 import pickle
 import sys
-import traceback
 
 import _hostile_errors
 import _wire_targets
@@ -29,33 +28,29 @@ def _cause(error: Exception) -> BaseException:
     return cause
 
 
-def test_the_message_quotes_the_repr_of_pickles_error() -> None:
+def test_the_message_names_only_a_safe_error_category() -> None:
     bad = _wire_targets.RaisesOnReduce(TypeError("boom"))
     with pytest.raises(pickle.PicklingError) as info:
         run(_wire_targets.count, 30.0, args=(bad,), mode="process")
-    assert str(info.value) == f"{SENT}: TypeError('boom')"
+    assert str(info.value) == f"{SENT}: TypeError"
 
 
-def test_a_plain_error_whose_argument_has_no_str_is_cut_in_place() -> None:
+def test_a_plain_error_whose_argument_has_no_str_is_replaced() -> None:
     cause = _cause(TypeError(_hostile_errors.BadStrArg()))
     assert type(cause) is TypeError
-    assert cause.args == ("<str() failed>",)
+    assert cause.args == ("transport operation failed",)
 
 
-def test_the_stand_in_keeps_the_frames_where_the_argument_failed() -> None:
+def test_the_stand_in_discards_caller_frames() -> None:
     cause = _cause(_hostile_errors.ReadOnlyArgs())
     assert type(cause) is RuntimeError
-    frames = traceback.extract_tb(cause.__traceback__)
-    raising = [frame for frame in frames if frame.filename.endswith("_wire_targets.py")]
-    assert [frame.name for frame in raising][-1:] == ["__reduce__"], frames
+    assert cause.__traceback__ is None
 
 
-def test_ten_notes_are_kept_and_the_rest_counted() -> None:
+def test_all_notes_are_discarded() -> None:
     notes = [f"note {index}" for index in range(15)]
     cause = _cause(_hostile_errors.with_notes(notes))
-    every = len(notes)  # pickle may have added its own notes to the list
-    expected = [f"note {index}" for index in range(10)]
-    assert vars(cause)["__notes__"] == [*expected, f"... and {every - 10} more notes"]
+    assert "__notes__" not in vars(cause)
 
 
 def _keeps_odd_notes() -> bool:
@@ -69,9 +64,9 @@ def _keeps_odd_notes() -> bool:
 
 
 @pytest.mark.skipif(not _keeps_odd_notes(), reason="pickle replaces such an error here")
-def test_notes_set_to_a_str_are_kept_as_one_cut_note() -> None:
+def test_notes_set_to_a_str_are_discarded() -> None:
     cause = _cause(_hostile_errors.with_notes("S" * 1000))
-    assert vars(cause)["__notes__"] == ["S" * 60 + "..."]
+    assert "__notes__" not in vars(cause)
 
 
 @pytest.mark.parametrize(

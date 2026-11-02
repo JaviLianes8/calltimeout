@@ -49,13 +49,11 @@ def test_a_huge_integer_is_described_not_printed() -> None:
     )
 
 
-def test_an_unknown_mode_is_quoted_briefly_and_the_names_are_listed() -> None:
+def test_an_unknown_mode_is_omitted_and_the_names_are_listed() -> None:
     with pytest.raises(ValueError) as info:
         run(_targets.echo, 1.0, args=(1,), mode="x" * 10_000)  # type: ignore[call-overload]
     message = str(info.value)
-    assert message == (
-        f"unknown mode '{'x' * 59}...: expected one of 'thread', 'process', 'signal'"
-    )
+    assert message == "unknown mode: expected one of 'thread', 'process', 'signal'"
 
 
 def test_a_long_type_name_is_cut_in_messages() -> None:
@@ -105,16 +103,17 @@ def test_a_call_the_child_cannot_load_reports_the_real_error() -> None:
             run(module.hidden, 30.0, mode="process")
     finally:
         del sys.modules[module.__name__]
-    assert "ModuleNotFoundError" in str(info.value)
+    assert "RuntimeError" in str(info.value)
     cause = str(info.value.__cause__)  # the child's traceback, with pickle's error bounded
-    assert "parcel.open()" in cause
-    assert "No module named 'calltimeout_parent_only'" in cause
+    assert "_outcome" in cause
+    assert "transport operation failed" in cause
+    assert "calltimeout_parent_only" not in cause
 
 
 def test_an_unpicklable_result_carries_the_childs_traceback_of_the_failure() -> None:
     with pytest.raises(pickle.PicklingError) as info:
         run(_targets.unpicklable_result, 30.0, mode="process")
-    assert "lock" in str(info.value)
+    assert str(info.value) == "the call's result cannot be sent back: TypeError"
     trace = str(info.value.__cause__)
     assert isinstance(info.value.__cause__, RemoteTraceback)
     assert "TypeError" in trace
