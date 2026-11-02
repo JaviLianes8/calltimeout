@@ -6,13 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-10-27
+## [1.0.0] - 2026-11-02
 
 The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed`,
 `RemoteTraceback` and `Mode`, with their parameter names, defaults and exception types,
-follow Semantic Versioning from this release on. calltimeout was never published before 1.0.0, and
-0.1.0 and 0.2.0 were never tagged; the changes below are against 0.2.0, commit 9b6975c
-on `main`.
+follow Semantic Versioning from this release on. The changes below are against PyPI
+0.2.0, published on 2026-10-31 from commit 9b6975c on `main`. Neither 0.1.0 nor 0.2.0
+was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
 
 ### Added
 
@@ -184,7 +184,7 @@ on `main`.
 
 ## [0.2.0] - 2026-10-12
 
-Never published or tagged (commit 9b6975c on `main`).
+Published on PyPI on 2026-10-31; no git tag (commit 9b6975c on `main`).
 
 ### Added
 

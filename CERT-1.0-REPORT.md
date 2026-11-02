@@ -1,9 +1,10 @@
 # calltimeout 1.0.0 certification report
 
-The 1.0.0 certification bar (19 items) applied to calltimeout. No release is on PyPI
-(`https://pypi.org/pypi/calltimeout/json` answered 404 on 2026-10-18, 2026-10-22,
-2026-10-25 and 2026-10-26), so there is no upgrade path to test; the changes below are
-listed against 0.2.0, the last state of `main` before this branch (9b6975c, never tagged).
+The 1.0.0 certification bar (19 items) applied to calltimeout. The PyPI JSON endpoint
+(`https://pypi.org/pypi/calltimeout/json`) returned 200 on 2026-11-02: 0.2.0 was published
+on 2026-10-31. Every module and `py.typed` in that wheel matches `main` at 9b6975c
+(line endings normalized). The CHANGELOG therefore describes changes against the actual
+published release. Earlier 404 observations below describe their historical dates.
 
 Progress:
 - [x] Branch `release/1.0.0` created from `main` (9b6975c, 0.2.0)
@@ -25,6 +26,8 @@ Progress:
 - [x] Five QA lenses, round 7: every finding fixed (88d5474 to 05d15a6)
 - [x] Five QA lenses, round 8: every finding fixed (052f156 to be35644)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
+- [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
+- [ ] Current laptop interpreter matrix and mutation verification (2026-11-02)
 
 ## Scorecard
 
@@ -37,11 +40,11 @@ Progress:
 | 5 | Typed, documented, bounded errors | PASS: `CallTimeout` (`TimeoutError`), `CallCrashed` (`RuntimeError`), `TypeError` or `ValueError` before the call starts; quoted values cut at 60 characters, exceptions at 300 (60 in the message for a call or a result that cannot be sent or rebuilt, whose chained pickle error is cut at 300 in place), huge integers described by size |
 | 6 | Contract tests of every public name | PASS |
 | 7 | Real ground truth | PASS: 8 CPython and PEP documents fetched with a hash manifest, each fact checked against the running interpreter; pebble 5.2.3 run live as a second implementation |
-| 8 | Real e2e from the wheel | PASS: wheel and sdist built, inspected, installed in throwaway venvs and used from an empty folder; no CLI; nothing on PyPI to upgrade from |
+| 8 | Real e2e from the wheel | PASS: wheel and sdist built, inspected, installed in throwaway venvs and used from an empty folder; no CLI; PyPI 0.2.0 upgraded in place on 2026-11-02 |
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
 | 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2 free-threaded (Windows) and 3.14.4 (Linux, three start methods); 3.8 and 3.9 are below `requires-python` |
 | 11 | README and `twine check` | PASS: `twine check --strict` in the e2e tests, absolute links, problem, why versus five alternatives checked on PyPI on 2026-10-22, certified badge |
-| 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-10-27` |
+| 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-11-02` |
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
 | 15 | Gates each exit 0 | PASS: see Gates |
@@ -700,3 +703,25 @@ Verification:
 ## Disputed findings
 
 None in rounds 1 to 8.
+
+## Preparation verification, 2026-11-02
+
+Resumed at d30aa43 with a clean working tree. The earlier QA findings, fixes and
+verification above are preserved. No runtime code changed in this preparation pass.
+Re-verification of the five lenses and the independent review remain pending.
+
+- The installed 0.2.0 wheel was downloaded from PyPI and compared with `main`, as above.
+  The published version had appeared since the last check; the CHANGELOG now records
+  its publication date and dates 1.0.0 to 2026-11-02.
+- All eight documents were fetched again with `scripts/fetch_upstream.py`; their sizes
+  and SHA-256 values match the tracked manifest. The existing ground-truth tests ran
+  against that fetched text and pebble 5.2.3 on Windows CPython 3.14.6.
+- The resumed suite with fetched documents, pebble and e2e enabled: 404 passed,
+  32 skipped, one failure. The wheel contents contract still listed the modules from
+  before round 8; `_child.py` and `_timers.py` are now included in its exact inventory.
+- Updated e2e suite: six passed. Both archives are inspected and pass `twine check
+  --strict`; both install in fresh venvs and run the external consumer. A separate
+  venv installs PyPI 0.2.0, exercises seeded calls, exceptions, crash exit codes,
+  context propagation and a process decorator, then upgrades to the built wheel.
+  The outputs agree and exceptions pickled under 0.2.0 load under 1.0.0. The full
+  1.0.0 consumer also passes after that upgrade. There is no CLI or entry point.

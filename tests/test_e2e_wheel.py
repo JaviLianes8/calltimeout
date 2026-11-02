@@ -22,6 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ["__init__", "_api", "_causes", "_decorator", "_errors", "_handoff", "_parcel"]
 MODULES += ["_process", "_signal", "_text", "_thread", "_validate", "_wire"]
+MODULES += ["_child", "_timers"]
 PACKAGE = {f"calltimeout/{name}.py" for name in MODULES} | {"calltimeout/py.typed"}
 
 pytestmark = pytest.mark.skipif(
@@ -132,3 +133,24 @@ def test_the_sdist_installs_and_works_too(dists: tuple[Path, Path], tmp_path: Pa
     installed = _run(python, "-m", "pip", "install", "-q", dists[1])
     assert installed.returncode == 0, installed.stderr
     _use(python, tmp_path / "work")
+
+
+@pytest.mark.skipif(
+    os.environ.get("CALLTIMEOUT_E2E_PYPI") != "1", reason="set CALLTIMEOUT_E2E_PYPI=1"
+)
+def test_upgrade_from_the_published_release(dists: tuple[Path, Path], tmp_path: Path) -> None:
+    python = _venv(tmp_path / "venv")
+    installed = _run(python, "-m", "pip", "install", "-q", "calltimeout==0.2.0")
+    assert installed.returncode == 0, installed.stderr
+    work = tmp_path / "upgrade"
+    work.mkdir()
+    script = work / "upgrade.py"
+    script.write_text((Path(__file__).parent / "_upgrade_consumer.py").read_text(encoding="utf-8"))
+    before = _run(python, "-I", script, "0.2.0", cwd=work)
+    assert before.returncode == 0, before.stderr
+    upgraded = _run(python, "-m", "pip", "install", "-q", "--upgrade", dists[0])
+    assert upgraded.returncode == 0, upgraded.stderr
+    after = _run(python, "-I", script, "1.0.0", cwd=work)
+    assert after.returncode == 0, after.stderr
+    assert after.stdout == before.stdout
+    _use(python, tmp_path / "consumer")
