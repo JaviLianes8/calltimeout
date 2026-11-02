@@ -25,6 +25,7 @@ Progress:
 - [x] Five QA lenses, round 8: every finding fixed (052f156 to be35644)
 - [x] Current QA round 1: nine findings fixed in dfd6ba4 (2026-11-02)
 - [x] Current QA round 2: C-06 fixed in 75cb060 (2026-11-02)
+- [x] Current QA round 3: C-07 fixed in 33271de (2026-11-02)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
 - [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
 - [x] Current laptop interpreter matrix and mutation verification (2026-11-02)
@@ -47,7 +48,7 @@ Progress:
 | 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-11-02` |
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
-| 15 | Gates each exit 0 | PASS: see current QA round 2 and Preparation verification below |
+| 15 | Gates each exit 0 | PASS: see current QA round 3 and Preparation verification below |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: original 58-mutant round retained in the linked table; ten mutations applied to the current source on 2026-11-02, all killed (table below) |
@@ -83,6 +84,16 @@ Four new contract cases first failed with 124,750 and 7,998,000 equality calls f
 Targeted contracts: 76 passed. Reviewer validation probes: 24 passed, zero comparisons at 500, 1,000, 2,000 and 4,000 keys; the 4,000-key validation took 0.001653 seconds.
 Windows CPython 3.14.6: all four gates exited 0; pytest: 409 passed, 53 skipped, 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed.
 C-06 is fixed; none disputed. Independent re-verification remains pending.
+
+## QA lenses, 2026-11-02 round 3
+
+Baseline: `aa01295726b16b33efa3f1b03f8c5072a5159390`. Fix commit: `33271de7469c43e8609cf34ad4bcd68572fd5c29`.
+
+C-07 (medium): keyword dictionary subclasses with inherited reads and dictionary-backed proxies now use stored pairs without repeated source lookups. Proxy backing mappings are identified through CPython GC traversal, with ordinary mapping reads as the fallback. Custom key selection, value lookup and validation order are preserved, including instance overrides and nested proxies. Destination keys remain plain strings; source keys and values are unchanged.
+Eight new collision contracts first failed on the baseline with 124,750 and 7,998,000 comparisons at 500 and 4,000 keys, at zero and positive budgets. They now require zero comparisons, preserved values and no zero-budget call. Another 30 cases cover custom mapping behavior, hidden instance and class namespaces, inherited subclasses, nested proxies and keys whose hash becomes unusable after dictionary construction.
+The original reviewer harness passes all 40 probes, including zero comparisons for both wrappers at 500, 1,000, 2,000 and 4,000 keys. The public API is unchanged and the behavior change is recorded in CHANGELOG.
+Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 447 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
+C-07 is fixed; none disputed. Independent re-verification remains pending.
 
 ## Earlier evidence and QA lenses
 
@@ -151,10 +162,7 @@ All ten were killed, with no timeout, collection failure or surviving mutation.
 
 ### Installed-wheel interpreter matrix
 
-Windows, 2026-11-02. Every distinct available CPython build from 3.10 upward was
-tested locally. Each environment installs the wheel; its tests come from the sdist
-with `src` omitted, and package doctests run against the installed modules. The eight
-fetched documents, pebble 5.2.3 and mypy are present in every environment.
+Windows, 2026-11-02. Every distinct available CPython build from 3.10 upward was tested locally. Each environment installs the wheel; its tests come from the sdist with `src` omitted, and package doctests run against the installed modules. The eight fetched documents, pebble 5.2.3 and mypy are present in every environment.
 
 | CPython | Passed | Skipped | Result |
 | --- | --- | --- | --- |
@@ -172,14 +180,7 @@ fetched documents, pebble 5.2.3 and mypy are present in every environment.
 | 3.14.10t | 401 | 37 | PASS |
 
 The `t` build runs with the GIL disabled, including after importing the test tools.
-3.10.11, 3.11.9, 3.12.10 and 3.13.2 are isolated copies of embedded runtimes;
-their six optional packaging tests are excluded because those runtimes omit `venv`.
-Those six tests pass separately in a full runtime. Other skips are POSIX/fork-only
-contracts and exception-note features absent on older Pythons. Other builds skip
-the six opt-in packaging tests. Python 3.11.11 is the locally bundled Blender runtime.
-Stale launcher entries point to absent files; available duplicate copies of the same
-build are represented once. No Python 3.15 or POSIX interpreter is installed here;
-the earlier Linux results remain historical evidence, not new local verification.
+3.10.11, 3.11.9, 3.12.10 and 3.13.2 are isolated copies of embedded runtimes; their six optional packaging tests are excluded because those runtimes omit `venv`. Those six tests pass separately in a full runtime. Other skips are POSIX/fork-only contracts and exception-note features absent on older Pythons. Other builds skip the six opt-in packaging tests. Python 3.11.11 is the locally bundled Blender runtime. Stale launcher entries point to absent files; available duplicate copies of the same build are represented once. No Python 3.15 or POSIX interpreter is installed here; the earlier Linux results remain historical evidence, not new local verification.
 
 ### Final archives
 
