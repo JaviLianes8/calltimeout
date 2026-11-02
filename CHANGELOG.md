@@ -56,6 +56,9 @@ was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
 - `kwargs` is read once into a plain `dict` before the budget starts. Keys are validated
   and string subclasses normalized before insertion, so overridden hashes and equality
   cannot cause quadratic insertion work. Mapping views cannot bypass key validation.
+- Existing built-in keyword dictionaries are copied from their stored key/value pairs,
+  avoiding quadratic source lookups for colliding string-subclass keys, even with a
+  zero timeout. Keys are still normalized and values preserved.
 - Validation and transport errors do not copy arbitrary exception text or notes.
   Callable and type names in other diagnostics remain bounded to 60 characters; a
   stand-in for an unpicklable callable exception keeps at most 300 characters of its

@@ -146,3 +146,24 @@ def test_normalized_keys_preserve_keyword_values() -> None:
     values = CollisionMapping(20)
     assert run(lambda **kw: kw, 5, kwargs=values) == {f"k{i}": 1 for i in range(20)}
     assert values.reads == 20
+
+
+@pytest.mark.parametrize("size", [500, 4000])
+@pytest.mark.parametrize("timeout", [0, 5])
+def test_existing_dict_keys_need_no_collision_comparisons(size: int, timeout: int) -> None:
+    expected = {f"k{i}": i for i in range(size)}
+    values: dict[str, int] = {CollidingKey(key): value for key, value in expected.items()}
+    original = list(values.items())
+    called: list[bool] = []
+
+    def capture(**keywords: object) -> dict[str, object]:
+        called.append(True)
+        assert all(type(key) is str for key in keywords)
+        return keywords
+
+    CollidingKey.comparisons = 0
+    result = run(capture, timeout, kwargs=values, default=None)
+    assert CollidingKey.comparisons == 0
+    assert result == (expected if timeout else None)
+    assert called == ([True] if timeout else [])
+    assert list(values.items()) == original

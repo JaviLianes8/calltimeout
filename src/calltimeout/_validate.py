@@ -110,13 +110,17 @@ def _keywords(kwargs: Mapping[object, object]) -> dict[str, object]:
     # reads, cannot pass the check with one set of keys and call with another.
     copy: dict[str, object] = {}
     try:
-        keys = kwargs.keys()  # Match mapping copy semantics even when __iter__ hides keys.
-        for key in keys:
+        # Exact dicts expose stored pairs without rehashing colliding subclass keys.
+        # Other mappings keep keys() semantics and defer value access until validation.
+        stored = type(kwargs) is dict
+        keys = kwargs.keys()
+        pairs = kwargs.items() if stored else ((key, None) for key in keys)
+        for key, value in pairs:
             if not _actual_type(key, str):
                 break
             # Normalize before insertion: user hashes and equality can collide or raise.
             name = str.__str__(cast(str, key))
-            copy[name] = kwargs[key]
+            copy[name] = value if stored else kwargs[key]
         else:
             return copy
     except Exception:
