@@ -27,6 +27,7 @@ Progress:
 - [x] Current QA round 2: C-06 fixed in 75cb060 (2026-11-02)
 - [x] Current QA round 3: C-07 fixed in 33271de (2026-11-02)
 - [x] Current QA round 4: C-08 fixed in 8aa8992 (2026-11-02)
+- [x] Current QA round 5: C-09 fixed in ac2da71 (2026-11-02)
 - [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
 - [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
 - [x] Current laptop interpreter matrix and mutation verification (2026-11-02)
@@ -49,7 +50,7 @@ Progress:
 | 12 | Dated CHANGELOG section | PASS: `## [1.0.0] - 2026-11-02` |
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
-| 15 | Gates each exit 0 | PASS: see current QA round 4 and Preparation verification below |
+| 15 | Gates each exit 0 | PASS: see current QA round 5 and Preparation verification below |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: original 58-mutant round retained in the linked table; ten mutations applied to the current source on 2026-11-02, all killed (table below) |
@@ -105,6 +106,16 @@ Three new public contract cases first failed on the baseline, passing the exclud
 Reviewer confirmation and robustness probes: 43 passed, including C-07 and C-08. Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 450 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
 C-08 is fixed; none disputed. Independent re-verification remains pending.
 
+## QA lenses, 2026-11-02 round 5
+
+Baseline: `dc4838bcd211d9855a8ba94a067fd4401a18e7e6`. Fix commit: `ac2da718d7f1749ded921e10e96c554e50e3bd39`.
+
+C-09 (medium): aliased dictionary namespace descriptors now permit stored-pair copying when mapping reads are unmodified. A verified built-in descriptor exposes the real instance namespace before class methods are checked, preserving C-08's instance key selection. Shadowed or foreign descriptors retain ordinary mapping reads. Public names and signatures are unchanged; CHANGELOG records the behavior change.
+All 24 new contract cases first failed with 2,016 or 32,640 equality calls at 64 and 256 keys. They now require zero comparisons and zero rehashes, preserved source and value identities, plain-string destination keys and zero-budget no-call behavior. Cases cover proxy depths 0, 1 and 3, with empty namespaces or unrelated instance attributes. Targeted validation contracts: 84 passed; final keyword contracts: 57 passed.
+The independent reviewer harness passes all 39 probes, including C-08 selection, descriptor variants, seeded selection, malformed keys and collision scaling. At 4,000 keys, direct and nested-proxy aliases each perform zero comparisons; median public call times were 0.010200 and 0.010969 seconds, respectively.
+Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 474 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
+C-09 is fixed; none disputed. Independent re-verification remains pending.
+
 ## Earlier evidence and QA lenses
 
 The earlier evidence is retained in full, separated by round for readability. Dates and machine names in these records refer to those historical runs. No round records a final pass of all five lenses; re-verification remains pending.
@@ -126,27 +137,11 @@ There are no disputed findings in rounds 1 to 8.
 
 Resumed at d30aa43 with a clean working tree. The earlier QA findings, fixes and verification above are preserved. No runtime code changed in this preparation pass. Re-verification of the five lenses and the independent review remain pending.
 
-- The installed 0.2.0 wheel was downloaded from PyPI and compared with `main`, as above.
-  The published version had appeared since the last check; the CHANGELOG now records
-  its publication date and dates 1.0.0 to 2026-11-02.
-- All eight documents were fetched again with `scripts/fetch_upstream.py`; their sizes
-  and SHA-256 values match the tracked manifest. The existing ground-truth tests ran
-  against that fetched text and pebble 5.2.3 on Windows CPython 3.14.6.
-- The resumed suite with fetched documents, pebble and e2e enabled: 404 passed,
-  32 skipped, one failure. The wheel contents contract still listed the modules from
-  before round 8; `_child.py` and `_timers.py` are now included in its exact inventory.
-- Updated e2e suite (`CALLTIMEOUT_E2E=1`, `CALLTIMEOUT_E2E_PYPI=1`): six passed.
-  Both archives are inspected and pass `twine check
-  --strict`; both install in fresh venvs and run the external consumer. A separate
-  venv installs PyPI 0.2.0, exercises seeded calls, exceptions, crash exit codes,
-  context propagation and a process decorator, then upgrades to the built wheel.
-  The outputs agree and exceptions pickled under 0.2.0 load under 1.0.0. The full
-  1.0.0 consumer also passes after that upgrade. There is no CLI or entry point.
-- Each gate exits 0 on its own on Windows CPython 3.14.6: `ruff format --check .`
-  (75 files), `ruff check .`, `mypy --strict src` (15 files), `mypy --strict src tests`
-  (66 files), and `pytest` (387 passed, 51 skipped). This repository run skips the
-  optional e2e and fetched-document tests; those run separately above and in the
-  installed-wheel matrix below. Tool versions: ruff 0.17.3, mypy 2.4.1.
+- The installed 0.2.0 wheel was downloaded from PyPI and compared with `main`, as above. The published version had appeared since the last check; the CHANGELOG now records its publication date and dates 1.0.0 to 2026-11-02.
+- All eight documents were fetched again with `scripts/fetch_upstream.py`; their sizes and SHA-256 values match the tracked manifest. The existing ground-truth tests ran against that fetched text and pebble 5.2.3 on Windows CPython 3.14.6.
+- The resumed suite with fetched documents, pebble and e2e enabled: 404 passed, 32 skipped, one failure. The wheel contents contract still listed the modules from before round 8; `_child.py` and `_timers.py` are now included in its exact inventory.
+- Updated e2e suite (`CALLTIMEOUT_E2E=1`, `CALLTIMEOUT_E2E_PYPI=1`): six passed. Both archives are inspected and pass `twine check --strict`; both install in fresh venvs and run the external consumer. A separate venv installs PyPI 0.2.0, exercises seeded calls, exceptions, crash exit codes, context propagation and a process decorator, then upgrades to the built wheel. The outputs agree and exceptions pickled under 0.2.0 load under 1.0.0. The full 1.0.0 consumer also passes after that upgrade. There is no CLI or entry point.
+- Each gate exits 0 on its own on Windows CPython 3.14.6: `ruff format --check .` (75 files), `ruff check .`, `mypy --strict src` (15 files), `mypy --strict src tests` (66 files), and `pytest` (387 passed, 51 skipped). This repository run skips the optional e2e and fetched-document tests; those run separately above and in the installed-wheel matrix below. Tool versions: ruff 0.17.3, mypy 2.4.1.
 - `mypy --strict src tests` also passes with `--platform linux` and `--platform darwin`.
 
 ### Mutation verification on the current source
