@@ -120,20 +120,25 @@ def _stored_keywords(value: object) -> dict[object, object] | None:
     # Custom metaclasses can hide overridden methods from static lookup.
     if not _actual_type(value, dict) or type(type(value)) is not type:
         return None
-    # Shadowed or aliased descriptors can hide instance keys from static lookup.
+    names = ("keys", "__getitem__", "__getattribute__")
+    # Read the real namespace directly: static instance lookup misses aliased descriptors.
     for owner in type(value).__mro__:
         if "__dict__" in owner.__dict__:
             namespace = owner.__dict__["__dict__"]
             if (
                 type(namespace) is not GetSetDescriptorType
                 or namespace.__name__ != "__dict__"
-                or namespace.__objclass__ is not owner
+                or namespace.__objclass__ not in type(value).__mro__
+                or namespace.__objclass__.__dict__.get("__dict__") is not namespace
             ):
+                return None
+            attributes = cast(GetSetDescriptorType, namespace).__get__(value, type(value))
+            if any(dict.__contains__(attributes, name) for name in names):
                 return None
             break
     if all(
-        inspect.getattr_static(value, name) is inspect.getattr_static(dict, name)
-        for name in ("keys", "__getitem__", "__getattribute__")
+        inspect.getattr_static(type(value), name) is inspect.getattr_static(dict, name)
+        for name in names
     ):
         return cast(dict[object, object], value)
     return None
