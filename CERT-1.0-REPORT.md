@@ -151,7 +151,7 @@ Ten mutations applied individually to a scratch copy of the current runtime sour
 | Id | Mutation | Result | Contract that failed |
 | --- | --- | --- | --- |
 | M01 | a bool timeout accepted | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
-| M02 | negative check off by one | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M02 | negative check off by one | killed | `test_unordered_timeouts.py::test_run_refuses_an_unordered_negative_timeout[thread--5e-324]` (survived at 70bfa1a; pinned in 1ce9b5c) |
 | M03 | TIMEOUT_MAX itself refused | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
 | M04 | NaN check dropped | killed | `test_validation.py::test_the_decorator_rejects_bad_settings_when_applied[<lambda>1]` |
 | M05 | negative zero retained | killed | `test_regressions.py::test_the_timeout_is_reported_as_the_validated_float` |
@@ -193,3 +193,68 @@ The final archives were rebuilt after the documentation updates. Both contents c
 - The README badge matches the reference exactly. PyPI metadata for the five README alternatives was fetched again on 2026-11-02; versions and release dates agree.
 
 Preparation items 1 to 15 and 18 are complete. Items 16 and 19 await independent verification; item 17's merge and publication remain pending.
+
+## Review round 2 (2026-11-03)
+
+Reviewed: `1ce9b5cb8caba678ce8db1bce5e71f632816a836`. Finding R2-1 (item 18): the recorded M02 row named a test that does not catch it. M02 survived at 70bfa1a and is killed since 1ce9b5c by `tests/test_unordered_timeouts.py::test_run_refuses_an_unordered_negative_timeout[thread--5e-324]`; the M02 rows here and in CERT-1.0-MUTATIONS.md now say so. The reviewer re-ran `scripts/mutate.py` on 1ce9b5c with the full suite and `-x`: every entry of `scripts/mutants.json` applies once, 46 Windows mutants killed, 0 survived; the 12 POSIX-only mutants are unchanged since their WSL run. Table of that run (first failing test per mutant at this commit; POSIX-only rows were skipped on Windows):
+
+| Id | Mutation | File | Result | Caught by |
+| --- | --- | --- | --- | --- |
+| M01 | a bool timeout accepted | `src/calltimeout/_validate.py` | killed | `tests/test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M02 | negative check off by one | `src/calltimeout/_validate.py` | killed | `tests/test_unordered_timeouts.py::test_run_refuses_an_unordered_negative_timeout[thread--5e-324]` |
+| M03 | TIMEOUT_MAX itself refused | `src/calltimeout/_validate.py` | killed | `tests/test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M04 | NaN check dropped | `src/calltimeout/_validate.py` | killed | `tests/test_validation.py::test_the_decorator_rejects_bad_settings_when_applied[<lambda>1]` |
+| M05 | -0.0 kept negative | `src/calltimeout/_validate.py` | killed | `tests/test_regressions.py::test_the_timeout_is_reported_as_the_validated_float` |
+| M06 | coroutine function check dropped | `src/calltimeout/_validate.py` | killed | `tests/test_hostile_names.py::test_a_function_name_that_lies_about_its_length_is_cut` |
+| M07 | a list accepted as args | `src/calltimeout/_validate.py` | killed | `tests/test_validation.py::test_rejects_args_that_are_not_a_tuple` |
+| M08 | kwargs key check dropped | `src/calltimeout/_validate.py` | killed | `tests/test_contract_edges.py::test_the_kwargs_checked_are_the_kwargs_the_call_gets[thread]` |
+| M09 | str subclass mode used as given | `src/calltimeout/_validate.py` | killed | `tests/test_hardening.py::test_a_str_subclass_mode_is_read_as_the_plain_name` |
+| M10 | wrong error type for a non-str mode | `src/calltimeout/_validate.py` | killed | `tests/test_fuzz_arguments.py::test_only_the_three_mode_names_are_accepted[1]` |
+| M11 | coroutine result not closed | `src/calltimeout/_validate.py` | killed | `tests/test_validation.py::test_rejects_a_coroutine_returned_by_the_call[thread]` |
+| M12 | float conversion failure leaks | `src/calltimeout/_validate.py` | killed | `tests/test_validation_contracts.py::test_conversion_failure_has_no_caller_text_or_retained_chain[run]` |
+| M13 | cut keeps one character more | `src/calltimeout/_text.py` | killed | `tests/test_hardening.py::test_a_long_type_name_is_cut_in_messages` |
+| M14 | huge integer boundary off by one | `src/calltimeout/_text.py` | killed | `tests/test_hardening.py::test_a_huge_integer_is_described_not_printed` |
+| M15 | call name fallback lost | `src/calltimeout/_text.py` | killed | `tests/test_messages.py::test_a_partial_is_named_by_its_type_never_by_its_bound_arguments` |
+| M16 | CallTimeout pickles without its state | `src/calltimeout/_errors.py` | killed | `tests/test_hardening.py::test_extra_attributes_and_notes_survive_pickle[error0]` |
+| M17 | CallCrashed prints a huge exit code | `src/calltimeout/_errors.py` | killed | `tests/test_errors.py::test_a_number_that_cannot_be_printed_is_named_by_its_type` |
+| M18 | CallTimeout keeps its private module | `src/calltimeout/__init__.py` | killed | `tests/test_contract_api.py::test_public_objects_live_under_the_package_name` |
+| M19 | zero budget starts the call | `src/calltimeout/_api.py` | killed | `tests/test_aliased_keywords.py::test_aliased_namespace_copies_stored_pairs_without_key_lookups[False-0-0-64]` |
+| M20 | default and raise swapped | `src/calltimeout/_api.py` | killed | `src/calltimeout/__init__.py::calltimeout.run` |
+| M21 | timeout reported as given | `src/calltimeout/_api.py` | killed | `tests/test_regressions.py::test_the_timeout_is_reported_as_the_validated_float` |
+| M22 | signal mode check after the zero shortcut | `src/calltimeout/_api.py` | killed | `tests/test_signal_windows.py::test_the_platform_error_comes_before_the_zero_budget_shortcut` |
+| M23 | kwargs passed through uncopied | `src/calltimeout/_validate.py` | killed | `tests/test_aliased_keywords.py::test_aliased_namespace_copies_stored_pairs_without_key_lookups[False-0-5-64]` |
+| M24 | context variables not copied | `src/calltimeout/_thread.py` | killed | `tests/test_thread.py::test_the_call_sees_the_callers_context_variables` |
+| M25 | worker is not a daemon | `src/calltimeout/_thread.py` | killed | `tests/test_thread.py::test_a_lingering_call_runs_in_a_named_daemon_thread` |
+| M26 | thread wait twice the budget | `src/calltimeout/_thread.py` | killed | `tests/test_contract_edges.py::test_an_overrun_ends_after_the_budget_and_well_before_twice_it[thread]` |
+| M27 | coroutine result returned | `src/calltimeout/_thread.py` | killed | `tests/test_validation.py::test_rejects_a_coroutine_returned_by_the_call[thread]` |
+| M28 | thread name loses the call | `src/calltimeout/_thread.py` | killed | `tests/test_child_outcomes.py::test_a_classmethod_sent_through_its_class_names_the_child_after_the_method` |
+| M29 | no grace period for a finished child | `src/calltimeout/_process.py` | killed | `tests/test_docs.py::test_the_grace_period_in_the_docs_matches_the_code` |
+| M30 | a broken pipe escapes as OSError | `src/calltimeout/_process.py` | killed | `tests/test_hardening.py::test_a_reader_cut_short_counts_as_no_result` |
+| M31 | pickling past the budget still starts | `src/calltimeout/_process.py` | killed | `tests/test_contract_edges.py::test_a_call_whose_pickling_spends_the_budget_starts_no_process` |
+| M32 | a lost child is waited for without limit | `src/calltimeout/_process.py` | killed | `tests/test_hardening.py::test_waiting_for_a_lost_childs_exit_stays_within_the_budget` |
+| M33 | a child ignoring SIGTERM is never killed | `src/calltimeout/_process.py` | POSIX run | |
+| M34 | the child target is not claimed once | `src/calltimeout/_child.py` | killed | `tests/test_contract_edges.py::test_a_decorated_process_function_called_inside_its_own_child_gets_a_new_child` |
+| M35 | the child does not mark its target | `src/calltimeout/_child.py` | killed | `tests/test_child_outcomes.py::test_a_decorated_call_inside_another_calls_child_gets_its_own_child_and_budget` |
+| M36 | a crash behind a grandchild goes unseen | `src/calltimeout/_process.py` | POSIX run | |
+| M37 | a crash reports the wrong exit code | `src/calltimeout/_process.py` | killed | `tests/test_docs.py::test_every_example_runs_as_a_script_and_prints_what_its_comments_say[GUIDE.md-5]` |
+| M38 | a load failure in the child is a crash | `src/calltimeout/_child.py` | killed | `tests/test_child_outcomes.py::test_a_function_the_child_cannot_find_raises_a_bounded_unpickling_error` |
+| M39 | an exception that cannot be rebuilt is sent | `src/calltimeout/_wire.py` | killed | `tests/test_child_outcomes.py::test_a_child_error_that_rebuilds_as_something_else_arrives_as_a_stand_in[raise_rebuilt_as_text]` |
+| M40 | the child traceback is not chained | `src/calltimeout/_wire.py` | killed | `src/calltimeout/__init__.py::calltimeout.RemoteTraceback` |
+| M41 | detail cut too short | `src/calltimeout/_causes.py` | killed | `tests/test_child_outcomes.py::test_a_child_error_that_rebuilds_as_something_else_arrives_as_a_stand_in[raise_rebuilt_as_text]` |
+| M42 | a result pickling failure is not chained | `src/calltimeout/_wire.py` | killed | `tests/test_bounded_causes.py::test_a_results_pickling_error_reports_only_a_safe_category` |
+| M43 | the wrapper is always sent to the child | `src/calltimeout/_decorator.py` | killed | `tests/test_decorator.py::test_process_mode_sends_a_callable_from_a_module_whose_getattr_raises` |
+| M44 | metadata of the function not kept | `src/calltimeout/_decorator.py` | killed | `tests/test_child_outcomes.py::test_a_decorated_call_inside_another_calls_child_gets_its_own_child_and_budget` |
+| M45 | the decorator ignores its default | `src/calltimeout/_decorator.py` | killed | `src/calltimeout/__init__.py::calltimeout.with_timeout` |
+| M46 | the decorator does not check the function | `src/calltimeout/_decorator.py` | killed | `tests/test_decorator.py::test_applying_the_decorator_to_something_not_callable_raises_at_once` |
+| M47 | re-arm delay of zero disarms | `src/calltimeout/_timers.py` | POSIX run | |
+| M48 | a late tick re-arms the timer | `src/calltimeout/_signal.py` | POSIX run | |
+| M49 | any exception after the alarm counts as the timeout | `src/calltimeout/_signal.py` | POSIX run | |
+| M50 | KeyboardInterrupt read as the timeout | `src/calltimeout/_signal.py` | POSIX run | |
+| M51 | previous handler not restored | `src/calltimeout/_signal.py` | POSIX run | |
+| M52 | outer timer not restored | `src/calltimeout/_timers.py` | POSIX run | |
+| M53 | a swallowed timeout returns normally | `src/calltimeout/_signal.py` | POSIX run | |
+| M54 | signal mode allowed off the main thread | `src/calltimeout/_signal.py` | POSIX run | |
+| M55 | a periodic outer timer becomes one-shot | `src/calltimeout/_timers.py` | POSIX run | |
+| M56 | an early wake is not re-armed | `src/calltimeout/_signal.py` | POSIX run | |
+| M57 | outer tick passed on twice | `src/calltimeout/_signal.py` | POSIX run | |
+| M58 | handler set outside Python accepted | `src/calltimeout/_signal.py` | POSIX run | | Records only: no code or test change.

@@ -18,7 +18,7 @@ the mutant is equivalent there.
 | Id | Mutation | File | Result | Caught by |
 | --- | --- | --- | --- | --- |
 | M01 | a bool timeout accepted | `_validate.py` | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
-| M02 | negative check off by one | `_validate.py` | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
+| M02 | negative check off by one | `_validate.py` | killed | `test_unordered_timeouts.py::test_run_refuses_an_unordered_negative_timeout[thread--5e-324]` (survived at 70bfa1a; pinned in 1ce9b5c) |
 | M03 | TIMEOUT_MAX itself refused | `_validate.py` | killed | `test_fuzz_arguments.py::test_every_timeout_is_judged_by_the_documented_rules[1]` |
 | M04 | NaN check dropped | `_validate.py` | killed | `test_validation.py::test_the_decorator_rejects_bad_settings_when_applied[<lambda>1]` |
 | M05 | -0.0 kept negative | `_validate.py` | killed | `test_regressions.py::test_the_timeout_is_reported_as_the_validated_float` |
