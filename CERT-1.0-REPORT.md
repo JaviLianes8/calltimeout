@@ -28,7 +28,7 @@ Progress:
 - [x] Current QA round 3: C-07 fixed in 33271de (2026-11-02)
 - [x] Current QA round 4: C-08 fixed in 8aa8992 (2026-11-02)
 - [x] Current QA round 5: C-09 fixed in ac2da71 (2026-11-02)
-- [ ] Five QA lenses re-verified (item 19) and independent reviewer (item 16)
+- [x] Five QA lenses re-verified (item 19) and independent reviewer (item 16), 2026-11-03
 - [x] PyPI 0.2.0 installed and upgraded in place to the built 1.0.0 wheel (2026-11-02)
 - [x] Current laptop interpreter matrix and mutation verification (2026-11-02)
 
@@ -51,10 +51,10 @@ Progress:
 | 13 | pyproject 1.0.0, Production/Stable | PASS: 3.10 to 3.14, CPython, MIT, Homepage/Source/Issues/Changelog, keywords, `dependencies = []` |
 | 14 | sdist and wheel contents | PASS: asserted by `tests/test_e2e_wheel.py` |
 | 15 | Gates each exit 0 | PASS: see current QA round 5 and Preparation verification below |
-| 16 | Independent reviewer | pending |
-| 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
+| 16 | Independent reviewer | PASS: review round 3 at 0e77aa6 scored every item PASS (rounds 1 and 2 failed item 18, fixed in 1ce9b5c and 0e77aa6); see Independent review below |
+| 17 | PR and trace guard | PASS: PR #3 from `release/1.0.0` to `main`, trace guard CLEAN; merge and publication are the maintainer's step |
 | 18 | Contracts bite (mutations) | PASS: original 58-mutant round retained in the linked table; ten mutations applied to the current source on 2026-11-02, all killed (table below) |
-| 19 | Five independent QA lenses | Rounds 1 to 4: every finding of the five lenses fixed, at 3309979, at 00f6889 and 6e2c03c, at 2f962f3 to db26ef1, and at 726f948 to 388e62b; round 5: lens e's survivors pinned in 9f00374 and 5b84b46; round 6: every finding fixed in f477ccf and 3220523; round 7: every finding fixed in 88d5474 to 05d15a6; round 8: every finding fixed in 052f156 to be35644 (see QA lenses); re-verification pending |
+| 19 | Five independent QA lenses | PASS: rounds 1 to 4: every finding of the five lenses fixed, at 3309979, at 00f6889 and 6e2c03c, at 2f962f3 to db26ef1, and at 726f948 to 388e62b; round 5: lens e's survivors pinned in 9f00374 and 5b84b46; round 6: every finding fixed in f477ccf and 3220523; round 7: every finding fixed in 88d5474 to 05d15a6; round 8: every finding fixed in 052f156 to be35644 (see QA lenses); all five lenses PASS on re-verification (see Final QA verdicts below) |
 
 ## QA lenses, 2026-11-02 round 1
 
@@ -72,7 +72,7 @@ Fix commit: `dfd6ba4203b51385d3def3d3ce5c5a79c6c5cd36`.
 | C-04 | Invalid modes and all four transport directions omit caller text; transport causes discard notes, frames and chains without editing the original error. |
 | C-05 | Normalize string keys before insertion; collision contracts check operation counts and one read per value. |
 
-All nine findings are fixed; none disputed. Independent re-verification remains pending. The 22 new contract cases all failed on the baseline before implementation and now pass.
+All nine findings are fixed; none disputed. Re-verified afterwards; see Final QA verdicts. The 22 new contract cases all failed on the baseline before implementation and now pass.
 Reviewer repros rerun against the fix: A1/A2, 3 passed; B-001, 3 passed; C validation and scaling, 11 passed, with zero key comparisons at 500 through 4,000 colliding keys.
 Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 405 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. mypy --strict src tests also passed.
 POSIX and optional packaging checks were not rerun in this fix pass; their earlier evidence is retained below.
@@ -85,7 +85,7 @@ C-06 (medium): exact built-in keyword dictionaries now yield stored key/value pa
 Four new contract cases first failed with 124,750 and 7,998,000 equality calls for 500 and 4,000 keys, at zero and positive budgets. All now pass with zero comparisons, preserved values and source contents, plain-string destination keys, and no zero-budget call.
 Targeted contracts: 76 passed. Reviewer validation probes: 24 passed, zero comparisons at 500, 1,000, 2,000 and 4,000 keys; the 4,000-key validation took 0.001653 seconds.
 Windows CPython 3.14.6: all four gates exited 0; pytest: 409 passed, 53 skipped, 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed.
-C-06 is fixed; none disputed. Independent re-verification remains pending.
+C-06 is fixed; none disputed. Re-verified afterwards; see Final QA verdicts.
 
 ## QA lenses, 2026-11-02 round 3
 
@@ -95,7 +95,7 @@ C-07 (medium): keyword dictionary subclasses with inherited reads and dictionary
 Eight new collision contracts first failed on the baseline with 124,750 and 7,998,000 comparisons at 500 and 4,000 keys, at zero and positive budgets. They now require zero comparisons, preserved values and no zero-budget call. Another 30 cases cover custom mapping behavior, hidden instance and class namespaces, inherited subclasses, nested proxies and keys whose hash becomes unusable after dictionary construction.
 The original reviewer harness passes all 40 probes, including zero comparisons for both wrappers at 500, 1,000, 2,000 and 4,000 keys. The public API is unchanged and the behavior change is recorded in CHANGELOG.
 Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 447 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
-C-07 is fixed; none disputed. Independent re-verification remains pending.
+C-07 is fixed; none disputed. Re-verified afterwards; see Final QA verdicts.
 
 ## QA lenses, 2026-11-02 round 4
 
@@ -104,7 +104,7 @@ Baseline: `1afe973e4a6fb239fad13ffaecd02c0b4e746052`. Fix commit: `8aa899233526e
 C-08 (medium): stored-pair copying now requires the instance namespace descriptor to have the expected name and belong to the class that defines it in the MRO. Aliased or shadowed descriptors use ordinary mapping reads, preserving instance `keys()` selection directly and through nested proxies. The public API is unchanged; CHANGELOG records the behavior change.
 Three new public contract cases first failed on the baseline, passing the excluded `other` keyword at proxy depths 0, 1 and 2. All now pass and verify the source dictionary is unchanged. Targeted contracts: 60 passed, including the C-07 collision checks.
 Reviewer confirmation and robustness probes: 43 passed, including C-07 and C-08. Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 450 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
-C-08 is fixed; none disputed. Independent re-verification remains pending.
+C-08 is fixed; none disputed. Re-verified afterwards; see Final QA verdicts.
 
 ## QA lenses, 2026-11-02 round 5
 
@@ -114,11 +114,11 @@ C-09 (medium): aliased dictionary namespace descriptors now permit stored-pair c
 All 24 new contract cases first failed with 2,016 or 32,640 equality calls at 64 and 256 keys. They now require zero comparisons and zero rehashes, preserved source and value identities, plain-string destination keys and zero-budget no-call behavior. Cases cover proxy depths 0, 1 and 3, with empty namespaces or unrelated instance attributes. Targeted validation contracts: 84 passed; final keyword contracts: 57 passed.
 The independent reviewer harness passes all 39 probes, including C-08 selection, descriptor variants, seeded selection, malformed keys and collision scaling. At 4,000 keys, direct and nested-proxy aliases each perform zero comparisons; median public call times were 0.010200 and 0.010969 seconds, respectively.
 Windows CPython 3.14.6: ruff format --check ., ruff check ., mypy --strict src and pytest each exited 0; pytest: 474 passed, 53 skipped, with a 300-second per-test timeout and scratch basetemp. Strict typing of tests also passed. POSIX, optional packaging and the interpreter matrix were not rerun in this fix pass; their earlier evidence is retained below.
-C-09 is fixed; none disputed. Independent re-verification remains pending.
+C-09 is fixed; none disputed. Re-verified afterwards; see Final QA verdicts.
 
 ## Earlier evidence and QA lenses
 
-The earlier evidence is retained in full, separated by round for readability. Dates and machine names in these records refer to those historical runs. No round records a final pass of all five lenses; re-verification remains pending.
+The earlier evidence is retained in full, separated by round for readability. Dates and machine names in these records refer to those historical runs. The final verdict of every lens is recorded in Final QA verdicts below.
 
 - [Baseline, API review, ground truth, fuzz, packaging and gates](https://github.com/JaviLianes8/calltimeout/blob/main/CERT-1.0-BASELINE.md).
 - [Original 58-mutation table](https://github.com/JaviLianes8/calltimeout/blob/main/CERT-1.0-MUTATIONS.md).
@@ -135,7 +135,7 @@ There are no disputed findings in rounds 1 to 8.
 
 ## Preparation verification, 2026-11-02
 
-Resumed at d30aa43 with a clean working tree. The earlier QA findings, fixes and verification above are preserved. No runtime code changed in this preparation pass. Re-verification of the five lenses and the independent review remain pending.
+Resumed at d30aa43 with a clean working tree. The earlier QA findings, fixes and verification above are preserved. No runtime code changed in this preparation pass. The five lenses and the independent review were completed afterwards; see Final QA verdicts and Independent review.
 
 - The installed 0.2.0 wheel was downloaded from PyPI and compared with `main`, as above. The published version had appeared since the last check; the CHANGELOG now records its publication date and dates 1.0.0 to 2026-11-02.
 - All eight documents were fetched again with `scripts/fetch_upstream.py`; their sizes and SHA-256 values match the tracked manifest. The existing ground-truth tests ran against that fetched text and pebble 5.2.3 on Windows CPython 3.14.6.
@@ -192,7 +192,7 @@ The final archives were rebuilt after the documentation updates. Both contents c
 - All 69 Python source files are at most 200 lines. The earlier report sections are preserved verbatim in their linked files, each under 200 lines and excluded from both distributions. The main report retains the current mutation table.
 - The README badge matches the reference exactly. PyPI metadata for the five README alternatives was fetched again on 2026-11-02; versions and release dates agree.
 
-Preparation items 1 to 15 and 18 are complete. Items 16 and 19 await independent verification; item 17's merge and publication remain pending.
+Preparation items 1 to 15 and 18 are complete. Items 16 and 19 were verified afterwards (Final QA verdicts and Independent review below).
 
 ## Review round 2 (2026-11-03)
 
@@ -257,4 +257,46 @@ Reviewed: `1ce9b5cb8caba678ce8db1bce5e71f632816a836`. Finding R2-1 (item 18): th
 | M55 | a periodic outer timer becomes one-shot | `src/calltimeout/_timers.py` | POSIX run | |
 | M56 | an early wake is not re-armed | `src/calltimeout/_signal.py` | POSIX run | |
 | M57 | outer tick passed on twice | `src/calltimeout/_signal.py` | POSIX run | |
-| M58 | handler set outside Python accepted | `src/calltimeout/_signal.py` | POSIX run | | Records only: no code or test change.
+| M58 | handler set outside Python accepted | `src/calltimeout/_signal.py` | POSIX run | |
+
+Records only: no code or test change.
+
+## Final QA verdicts (item 19)
+
+Each lens re-ran its own checks on the commit shown and reported back; reports are kept in the certification evidence archive, outside the repository, under the path given.
+
+| Lens | Rounds | Final verdict | Report | Commit |
+| --- | --- | --- | --- | --- |
+| a. API and docs | 2 | PASS | `calltimeout-cert/lens-a-r2/REPORT.md` | 75d143a |
+| b. Correctness and ground truth | 2 | PASS | `calltimeout-cert/lens-b-r2/REPORT.md` | 75d143a |
+| c. Adversarial and robustness | 6 | PASS | `calltimeout-cert/lens-c-r6/REPORT.md` | 70bfa1a |
+| d. Packaging and real e2e | 1 | PASS | `calltimeout-cert/lens-d-r1/REPORT.md` | 8693a15 |
+| e. Contract strength | 1 | PASS | `calltimeout-cert/lens-e-r1/REPORT.md` | 8693a15 |
+
+Changes after each lens commit touched no area that lens covers without a later check: lens c re-checked the last runtime change at 70bfa1a, and 1ce9b5c and 0e77aa6 add one test and records only.
+
+## Independent review (item 16)
+
+Round 3 reviewed 0e77aa6 on 2026-11-03 with verdict PASS. Rounds 1 and 2 failed item 18 (a mutation row naming a test that did not catch it); fixed in 1ce9b5c and 0e77aa6. The four gates exited 0 at 0e77aa6 in that review.
+
+| Item | Result |
+| --- | --- |
+| 1 | PASS |
+| 2 | PASS |
+| 3 | PASS |
+| 4 | PASS |
+| 5 | PASS |
+| 6 | PASS |
+| 7 | PASS |
+| 8 | PASS |
+| 9 | PASS |
+| 10 | PASS |
+| 11 | PASS |
+| 12 | PASS |
+| 13 | PASS |
+| 14 | PASS |
+| 15 | PASS |
+| 16 | PASS |
+| 17 | PASS: PR #3 open, trace guard CLEAN; merge and publication by the maintainer |
+| 18 | PASS |
+| 19 | PASS |
