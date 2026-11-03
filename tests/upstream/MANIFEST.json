@@ -1,0 +1,74 @@
+{
+  "cpython-threading.rst": {
+    "title": "CPython documentation source, threading module",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.8/Doc/library/threading.rst",
+    "revision": "tag v3.14.8",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 52597,
+    "sha256": "19b4cb7d9eb59874a76812e850e7f67b71c501d774c8af5c91139b4fc6713b92"
+  },
+  "cpython-signal.rst": {
+    "title": "CPython documentation source, signal module",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.8/Doc/library/signal.rst",
+    "revision": "tag v3.14.8",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 27877,
+    "sha256": "82b9c0526a25a6ee21d65b9307a818c6d5a42067711cb1596fafabe1b1c2a85b"
+  },
+  "cpython-multiprocessing.rst": {
+    "title": "CPython documentation source, multiprocessing module",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.8/Doc/library/multiprocessing.rst",
+    "revision": "tag v3.14.8",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 123205,
+    "sha256": "67e922a7bef8666a4c5e0526f42e17349f0563e7d5ac01ae2a3a0624964e0656"
+  },
+  "cpython-asyncio-task.rst": {
+    "title": "CPython documentation source, asyncio coroutines and tasks",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.8/Doc/library/asyncio-task.rst",
+    "revision": "tag v3.14.8",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 52038,
+    "sha256": "3c99bbf5d495e6815311d6c2d432f0aaa0eb59aae8d212957298c396d140f005"
+  },
+  "cpython-3.10-asyncio-task.rst": {
+    "title": "CPython 3.10 documentation source, asyncio coroutines and tasks",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.10.22/Doc/library/asyncio-task.rst",
+    "revision": "tag v3.10.22",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 33069,
+    "sha256": "810e3c872be70d090a6b3f3d84fe13e20fd346a0ed7a2bf58da5b4222797a514"
+  },
+  "cpython-inspect.rst": {
+    "title": "CPython documentation source, inspect module",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.8/Doc/library/inspect.rst",
+    "revision": "tag v3.14.8",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 75713,
+    "sha256": "d5e75e93cbc2d174ca6eea5dfcd82676cd4c574b1a3cb0d901ea37a98683cafb"
+  },
+  "cpython-pickle.rst": {
+    "title": "CPython documentation source, pickle module",
+    "url": "https://raw.githubusercontent.com/python/cpython/v3.14.8/Doc/library/pickle.rst",
+    "revision": "tag v3.14.8",
+    "licence": "PSF License Version 2, https://docs.python.org/3/license.html",
+    "fetched": "2026-10-18",
+    "size": 49745,
+    "sha256": "c240123787a4b1094073166c8286c295a43b6ec71605456211e0dc0d2c807f77"
+  },
+  "pep-0475.rst": {
+    "title": "PEP 475, Retry system calls failing with EINTR",
+    "url": "https://raw.githubusercontent.com/python/peps/6068058b896441388bbf22f2607ab681193f6a3d/peps/pep-0475.rst",
+    "revision": "commit 6068058b896441388bbf22f2607ab681193f6a3d",
+    "licence": "public domain, stated in the document",
+    "fetched": "2026-10-18",
+    "size": 16325,
+    "sha256": "5624e338889dc7208ae43b514450c16fe58628acbcd1b1c9ec7eba63570c6663"
+  }
+}

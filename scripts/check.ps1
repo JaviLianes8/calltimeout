@@ -1,14 +1,17 @@
 # Local quality gate. Run before every commit. No CI runs in the cloud.
-# Set CALLTIMEOUT_E2E=1 to also build the wheel and test it installed.
+# $ErrorActionPreference does not stop on a native command's non-zero exit, so each tool's
+# exit code is checked explicitly: a red gate must fail, never pass silently.
+# Set CALLTIMEOUT_E2E=1 to also build the wheel and sdist and test them installed.
 $ErrorActionPreference = "Stop"
 
-$steps = @(
-    { ruff format --check . },
-    { ruff check . },
-    { mypy --strict src tests },
-    { python -m pytest }
-)
-foreach ($step in $steps) {
-    & $step
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+function Invoke-Step($label, [scriptblock]$cmd) {
+    Write-Host "== $label =="
+    & $cmd
+    if ($LASTEXITCODE -ne 0) { Write-Host "FAILED: $label (exit $LASTEXITCODE)"; exit $LASTEXITCODE }
 }
+
+Invoke-Step "ruff format" { ruff format --check . }
+Invoke-Step "ruff lint"   { ruff check . }
+Invoke-Step "mypy"        { mypy --strict src tests }
+Invoke-Step "pytest"      { python -m pytest }
+Write-Host "gate green"

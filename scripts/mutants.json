@@ -1,0 +1,422 @@
+[
+ {
+  "id": "M01",
+  "file": "src/calltimeout/_validate.py",
+  "what": "a bool timeout accepted",
+  "old": "if type(timeout) is bool or not _actual_type(timeout, Real):",
+  "new": "if not _actual_type(timeout, Real):"
+ },
+ {
+  "id": "M02",
+  "file": "src/calltimeout/_validate.py",
+  "what": "negative check off by one",
+  "old": "if seconds < 0:",
+  "new": "if seconds <= -1:"
+ },
+ {
+  "id": "M03",
+  "file": "src/calltimeout/_validate.py",
+  "what": "TIMEOUT_MAX itself refused",
+  "old": "if seconds > threading.TIMEOUT_MAX:",
+  "new": "if seconds >= threading.TIMEOUT_MAX:"
+ },
+ {
+  "id": "M04",
+  "file": "src/calltimeout/_validate.py",
+  "what": "NaN check dropped",
+  "old": "if math.isnan(seconds):",
+  "new": "if False:"
+ },
+ {
+  "id": "M05",
+  "file": "src/calltimeout/_validate.py",
+  "what": "-0.0 kept negative",
+  "old": "seconds = float(number) + 0.0",
+  "new": "seconds = float(number)"
+ },
+ {
+  "id": "M06",
+  "file": "src/calltimeout/_validate.py",
+  "what": "coroutine function check dropped",
+  "old": "if inspect.iscoroutinefunction(fn):",
+  "new": "if False:"
+ },
+ {
+  "id": "M07",
+  "file": "src/calltimeout/_validate.py",
+  "what": "a list accepted as args",
+  "old": "if not _actual_type(args, tuple):",
+  "new": "if not _actual_type(args, (tuple, list)):"
+ },
+ {
+  "id": "M08",
+  "file": "src/calltimeout/_validate.py",
+  "what": "kwargs key check dropped",
+  "old": "            if not _actual_type(key, str):\n                break\n",
+  "new": ""
+ },
+ {
+  "id": "M09",
+  "file": "src/calltimeout/_validate.py",
+  "what": "str subclass mode used as given",
+  "old": "name = str.__str__(cast(str, mode))",
+  "new": "name = cast(str, mode)"
+ },
+ {
+  "id": "M10",
+  "file": "src/calltimeout/_validate.py",
+  "what": "wrong error type for a non-str mode",
+  "old": "raise TypeError(f\"mode must be a str, not {type_name(mode)}\")",
+  "new": "raise ValueError(f\"mode must be a str, not {type_name(mode)}\")"
+ },
+ {
+  "id": "M11",
+  "file": "src/calltimeout/_validate.py",
+  "what": "coroutine result not closed",
+  "old": "        value.close()  # else it warns later as never awaited\n",
+  "new": ""
+ },
+ {
+  "id": "M12",
+  "file": "src/calltimeout/_validate.py",
+  "what": "float conversion failure leaks",
+  "old": "    except Exception:\n        error = TypeError(\"timeout cannot be read as seconds\")",
+  "new": "    except Exception as exc:\n        raise TypeError(\"timeout cannot be read as seconds\") from exc"
+ },
+ {
+  "id": "M13",
+  "file": "src/calltimeout/_text.py",
+  "what": "cut keeps one character more",
+  "old": "text[:limit] + \"...\"",
+  "new": "text[:limit + 1] + \"...\""
+ },
+ {
+  "id": "M14",
+  "file": "src/calltimeout/_text.py",
+  "what": "huge integer boundary off by one",
+  "old": "int.bit_length(value) > 64",
+  "new": "int.bit_length(value) > 63"
+ },
+ {
+  "id": "M15",
+  "file": "src/calltimeout/_text.py",
+  "what": "call name fallback lost",
+  "old": " or _name(type(fn), \"__qualname__\")",
+  "new": ""
+ },
+ {
+  "id": "M16",
+  "file": "src/calltimeout/_errors.py",
+  "what": "CallTimeout pickles without its state",
+  "old": "return (type(self), (self.timeout,), dict(vars(self)))",
+  "new": "return (type(self), (self.timeout,), {})"
+ },
+ {
+  "id": "M17",
+  "file": "src/calltimeout/_errors.py",
+  "what": "CallCrashed prints a huge exit code",
+  "old": "exited with code {shown(exitcode)} before",
+  "new": "exited with code {exitcode} before"
+ },
+ {
+  "id": "M18",
+  "file": "src/calltimeout/__init__.py",
+  "what": "CallTimeout keeps its private module",
+  "old": "CallTimeout.__module__ = __name__\n",
+  "new": ""
+ },
+ {
+  "id": "M19",
+  "file": "src/calltimeout/_api.py",
+  "what": "zero budget starts the call",
+  "old": "if seconds == 0:",
+  "new": "if seconds < 0:"
+ },
+ {
+  "id": "M20",
+  "file": "src/calltimeout/_api.py",
+  "what": "default and raise swapped",
+  "old": "if not isinstance(default, _Unset):\n            return default",
+  "new": "if isinstance(default, _Unset):\n            return default"
+ },
+ {
+  "id": "M21",
+  "file": "src/calltimeout/_api.py",
+  "what": "timeout reported as given",
+  "old": "raise CallTimeout(seconds) from expired.__cause__",
+  "new": "raise CallTimeout(timeout) from expired.__cause__"
+ },
+ {
+  "id": "M22",
+  "file": "src/calltimeout/_api.py",
+  "what": "signal mode check after the zero shortcut",
+  "old": "if name == \"signal\":",
+  "new": "if name == \"signal\" and seconds:"
+ },
+ {
+  "id": "M23",
+  "file": "src/calltimeout/_validate.py",
+  "what": "kwargs passed through uncopied",
+  "old": "        else:\n            return copy\n",
+  "new": "        else:\n            return cast(dict[str, object], kwargs)\n"
+ },
+ {
+  "id": "M24",
+  "file": "src/calltimeout/_thread.py",
+  "what": "context variables not copied",
+  "old": "result.append(context.run(fn, *args, **kwargs))",
+  "new": "result.append(fn(*args, **kwargs))"
+ },
+ {
+  "id": "M25",
+  "file": "src/calltimeout/_thread.py",
+  "what": "worker is not a daemon",
+  "old": "daemon=True",
+  "new": "daemon=False"
+ },
+ {
+  "id": "M26",
+  "file": "src/calltimeout/_thread.py",
+  "what": "thread wait twice the budget",
+  "old": "thread.join(max(deadline - time.monotonic(), 0.0))",
+  "new": "thread.join(max(deadline - time.monotonic(), 0.0) * 2)"
+ },
+ {
+  "id": "M27",
+  "file": "src/calltimeout/_thread.py",
+  "what": "coroutine result returned",
+  "old": "return reject_coroutine(result[0])",
+  "new": "return result[0]"
+ },
+ {
+  "id": "M28",
+  "file": "src/calltimeout/_thread.py",
+  "what": "thread name loses the call",
+  "old": "return f\"calltimeout:{call_name(fn)}\"",
+  "new": "return \"calltimeout\""
+ },
+ {
+  "id": "M29",
+  "file": "src/calltimeout/_process.py",
+  "what": "no grace period for a finished child",
+  "old": "GRACE = 1.0",
+  "new": "GRACE = 0.0"
+ },
+ {
+  "id": "M30",
+  "file": "src/calltimeout/_process.py",
+  "what": "a broken pipe escapes as OSError",
+  "old": "except (EOFError, OSError):",
+  "new": "except EOFError:"
+ },
+ {
+  "id": "M31",
+  "file": "src/calltimeout/_process.py",
+  "what": "pickling past the budget still starts",
+  "old": "    if time.monotonic() >= deadline:\n        raise Expired  # pickling",
+  "new": "    if False:\n        raise Expired  # pickling"
+ },
+ {
+  "id": "M32",
+  "file": "src/calltimeout/_process.py",
+  "what": "a lost child is waited for without limit",
+  "old": "            if not _exits_within(process, deadline - time.monotonic()):\n                raise Expired\n",
+  "new": "            process.join()\n"
+ },
+ {
+  "id": "M33",
+  "file": "src/calltimeout/_process.py",
+  "what": "a child ignoring SIGTERM is never killed",
+  "old": "        if process.is_alive():\n            process.kill()\n",
+  "new": "",
+  "posix": true
+ },
+ {
+  "id": "M34",
+  "file": "src/calltimeout/_child.py",
+  "what": "the child target is not claimed once",
+  "old": "        _authorized.set(None)\n",
+  "new": ""
+ },
+ {
+  "id": "M35",
+  "file": "src/calltimeout/_child.py",
+  "what": "the child does not mark its target",
+  "old": "token = _authorized.set(self.target)",
+  "new": "token = _authorized.set(None)"
+ },
+ {
+  "id": "M36",
+  "file": "src/calltimeout/_process.py",
+  "what": "a crash behind a grandchild goes unseen",
+  "old": "        if not process.is_alive():\n            # A grandchild",
+  "new": "        if False:\n            # A grandchild",
+  "posix": true
+ },
+ {
+  "id": "M37",
+  "file": "src/calltimeout/_process.py",
+  "what": "a crash reports the wrong exit code",
+  "old": "raise CallCrashed(cast(int, process.exitcode))",
+  "new": "raise CallCrashed(None)"
+ },
+ {
+  "id": "M38",
+  "file": "src/calltimeout/_child.py",
+  "what": "a load failure in the child is a crash",
+  "old": "        except Exception as problem:\n            error = unloadable(problem)\n",
+  "new": "        except Exception as problem:\n            __import__(\"os\")._exit(1)\n            error = unloadable(problem)\n"
+ },
+ {
+  "id": "M39",
+  "file": "src/calltimeout/_wire.py",
+  "what": "an exception that cannot be rebuilt is sent",
+  "old": "        # An exception can pickle and still fail to rebuild, or rebuild as something else.\n        rebuilt = cast(\"tuple[bool, object, str]\", pickle.loads(data))[1]\n        if not isinstance(rebuilt, BaseException):\n            raise TypeError(f\"it rebuilds as {type_name(rebuilt)}, not an exception\")\n",
+  "new": ""
+ },
+ {
+  "id": "M40",
+  "file": "src/calltimeout/_wire.py",
+  "what": "the child traceback is not chained",
+  "old": "    error.__cause__ = RemoteTraceback(text)\n",
+  "new": ""
+ },
+ {
+  "id": "M41",
+  "file": "src/calltimeout/_causes.py",
+  "what": "detail cut too short",
+  "old": "DETAIL = 300",
+  "new": "DETAIL = 3"
+ },
+ {
+  "id": "M42",
+  "file": "src/calltimeout/_wire.py",
+  "what": "a result pickling failure is not chained",
+  "old": "        raise error from error.__cause__\n    except pickle.PicklingError as raised:",
+  "new": "        raise error from None\n    except pickle.PicklingError as raised:"
+ },
+ {
+  "id": "M43",
+  "file": "src/calltimeout/_decorator.py",
+  "what": "the wrapper is always sent to the child",
+  "old": "    return fn if through_class is None else DecoratorCall(",
+  "new": "    return DecoratorCall(wrapper) if through_class is None else DecoratorCall("
+ },
+ {
+  "id": "M44",
+  "file": "src/calltimeout/_decorator.py",
+  "what": "metadata of the function not kept",
+  "old": "        _keep_metadata(wrapper, fn)\n",
+  "new": ""
+ },
+ {
+  "id": "M45",
+  "file": "src/calltimeout/_decorator.py",
+  "what": "the decorator ignores its default",
+  "old": "            if isinstance(default, _Unset):\n                return run(target, timeout, args=args, kwargs=kwargs, mode=mode)",
+  "new": "            if True:\n                return run(target, timeout, args=args, kwargs=kwargs, mode=mode)"
+ },
+ {
+  "id": "M46",
+  "file": "src/calltimeout/_decorator.py",
+  "what": "the decorator does not check the function",
+  "old": "        check_call(fn, (), None)\n",
+  "new": ""
+ },
+ {
+  "id": "M47",
+  "file": "src/calltimeout/_timers.py",
+  "what": "re-arm delay of zero disarms",
+  "old": "_SOON = 1e-6",
+  "new": "_SOON = 0.0",
+  "posix": true
+ },
+ {
+  "id": "M48",
+  "file": "src/calltimeout/_signal.py",
+  "what": "a late tick re-arms the timer",
+  "old": "        if not active:\n            return  # the call is over",
+  "new": "        if False:\n            return  # the call is over",
+  "posix": true
+ },
+ {
+  "id": "M49",
+  "file": "src/calltimeout/_signal.py",
+  "what": "any exception after the alarm counts as the timeout",
+  "old": "        if fired and _caused_by(exc, raised):",
+  "new": "        if fired:",
+  "posix": true
+ },
+ {
+  "id": "M50",
+  "file": "src/calltimeout/_signal.py",
+  "what": "KeyboardInterrupt read as the timeout",
+  "old": "if id(current) in seen or not isinstance(current, Exception):",
+  "new": "if id(current) in seen:",
+  "posix": true
+ },
+ {
+  "id": "M51",
+  "file": "src/calltimeout/_signal.py",
+  "what": "previous handler not restored",
+  "old": "        signal.signal(signal.SIGALRM, previous)\n",
+  "new": "        signal.signal(signal.SIGALRM, signal.SIG_DFL)\n",
+  "posix": true
+ },
+ {
+  "id": "M52",
+  "file": "src/calltimeout/_timers.py",
+  "what": "outer timer not restored",
+  "old": "        signal.setitimer(signal.ITIMER_REAL, max(due - now, _SOON), interval)",
+  "new": "        pass",
+  "posix": true
+ },
+ {
+  "id": "M53",
+  "file": "src/calltimeout/_signal.py",
+  "what": "a swallowed timeout returns normally",
+  "old": "    if fired:\n        # The call caught",
+  "new": "    if False:\n        # The call caught",
+  "posix": true
+ },
+ {
+  "id": "M54",
+  "file": "src/calltimeout/_signal.py",
+  "what": "signal mode allowed off the main thread",
+  "old": "    if threading.current_thread() is not threading.main_thread():",
+  "new": "    if False:",
+  "posix": true
+ },
+ {
+  "id": "M55",
+  "file": "src/calltimeout/_timers.py",
+  "what": "a periodic outer timer becomes one-shot",
+  "old": "    return (now + interval if interval > 0 else None), interval",
+  "new": "    return None, interval",
+  "posix": true
+ },
+ {
+  "id": "M56",
+  "file": "src/calltimeout/_signal.py",
+  "what": "an early wake is not re-armed",
+  "old": "        arm(now)  # woke early: wait for whichever is due next",
+  "new": "        pass  # woke early: wait for whichever is due next",
+  "posix": true
+ },
+ {
+  "id": "M57",
+  "file": "src/calltimeout/_signal.py",
+  "what": "outer tick passed on twice",
+  "old": "        signal.setitimer(signal.ITIMER_REAL, 0)\n        if due and outer_due is not None:",
+  "new": "        if due and outer_due is not None:",
+  "posix": true
+ },
+ {
+  "id": "M58",
+  "file": "src/calltimeout/_signal.py",
+  "what": "handler set outside Python accepted",
+  "old": "    if previous is None:\n        raise RuntimeError(\"SIGALRM has a handler",
+  "new": "    if False:\n        raise RuntimeError(\"SIGALRM has a handler",
+  "posix": true
+ }
+]

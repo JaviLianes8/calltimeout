@@ -6,7 +6,188 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.2.0]
+## [1.0.0] - 2026-11-02
+
+The public API is now stable: `run`, `with_timeout`, `CallTimeout`, `CallCrashed`,
+`RemoteTraceback` and `Mode`, with their parameter names, defaults and exception types,
+follow Semantic Versioning from this release on. The changes below are against PyPI
+0.2.0, published on 2026-10-31 from commit 9b6975c on `main`. Neither 0.1.0 nor 0.2.0
+was tagged. Exceptions stored by 0.2.0 remain loadable after upgrading.
+
+### Added
+
+- `RemoteTraceback`, the cause chained to an exception raised by a process-mode call,
+  whose text (`.text`) is the child's traceback, is public and shown and pickled as
+  `calltimeout.RemoteTraceback`. It was a private class, shown in every such traceback
+  as `calltimeout._wire.RemoteTraceback`.
+
+### Changed
+
+- A `mode` that is not a `str` raises `TypeError` (it raised `ValueError`); an unknown
+  mode name still raises `ValueError`, and the message lists the three valid names. A
+  `str` subclass is read as the plain name.
+- `CallTimeout` and `CallCrashed` are shown and pickled as `calltimeout.CallTimeout` and
+  `calltimeout.CallCrashed`, so a pickle never names a private module, and they keep
+  extra attributes (such as notes) through pickle and copy. `run` and `with_timeout` are
+  shown and pickled as `calltimeout.run` and `calltimeout.with_timeout` too (a stored
+  `functools.partial(run, ...)` named `calltimeout._api`).
+- `CallCrashed.exitcode` is typed `int`: it was `int | None`, though `run` raises
+  `CallCrashed` only once the child has exited, with its code. A `RemoteTraceback` built
+  with a text that is not a `str` shows it bounded; its `str()` raised `TypeError`.
+- Generator functions and async generator functions raise `TypeError` in `run` and
+  `with_timeout` (an async one with the pointer to `asyncio`), and so does a call that
+  returns an async generator. They were accepted: the call returned the generator at
+  once, and its body then ran with no time limit as it was iterated.
+- Thread mode: a call that ends after the budget ran out is a timeout, even when the
+  caller notices only later. A call holding the GIL could end after its deadline and
+  before the caller ran again, and its value was returned (a 1 ms budget gave values
+  from calls that ran 3 to 10 ms).
+- A real-number timeout whose conversion to `float` fails raises `TypeError` (the
+  conversion's own error is not retained as a cause or context).
+- A negative timeout too large for a `float` (`-10**400`) raises "timeout must not be
+  negative"; it was reported as above `threading.TIMEOUT_MAX`.
+- Tiny negative real-number timeouts are rejected before float conversion can round
+  them to zero, including `Fraction(-1, 10**400)` in both public entry points.
+- Invalid mode messages list valid names without quoting the input. Timeout conversion
+  and keyword mapping failures use fixed, value-free diagnostics and retain no original
+  cause or context. Ordinary mapping-access failures now raise `TypeError`.
+- Validation checks actual types without consulting overridable `__class__` properties,
+  while accepting genuine subclasses and registered real-number and mapping types.
+- `kwargs` is read once into a plain `dict` before the budget starts. Keys are validated
+  and string subclasses normalized before insertion, so overridden hashes and equality
+  cannot cause quadratic insertion work. Mapping views cannot bypass key validation.
+- Existing built-in keyword dictionaries are copied from their stored key/value pairs,
+  avoiding quadratic source lookups for colliding string-subclass keys, even with a
+  zero timeout. Keys are still normalized and values preserved.
+- Dictionary subclasses with inherited read behavior and dictionary-backed mapping
+  proxies also avoid repeated source lookups for colliding keyword keys. Custom key
+  selection and value lookup retain their semantics, including through proxies.
+- An instance's `keys()` selection is preserved when its dictionary subclass aliases
+  a parent's `__dict__` descriptor, including through nested mapping proxies. Such
+  aliases previously caused excluded keywords to be passed to the callable.
+- Aliased instance namespace descriptors no longer force repeated keyword lookups
+  when dictionary reads are unmodified. Colliding string-subclass keys use stored
+  pairs directly, while instance `keys()` selection remains respected.
+- Validation and transport errors do not copy arbitrary exception text or notes.
+  Callable and type names in other diagnostics remain bounded to 60 characters; a
+  stand-in for an unpicklable callable exception keeps at most 300 characters of its
+  message. Ordinary callable exceptions and remote tracebacks retain their text.
+- Process mode: the budget also covers pickling the call and starting the child, and a
+  call whose pickling used it up is never started. A call that pickles in the caller but
+  cannot be loaded in the child (a function defined under the main guard, in
+  `python -c` or a notebook, or in a module the child cannot import; an argument whose
+  rebuild raises) raises `pickle.UnpicklingError` ("the call cannot be loaded in the
+  child process", with a safe category and library traceback chained as the cause)
+  instead of a crash with exit code 1. A child that dies while
+  sending its result raises `CallCrashed`, and waiting for a crashed child's exit code
+  never runs past the budget. A result that cannot be pickled raises
+  `pickle.PicklingError` with the child's library traceback, and a result that cannot
+  be rebuilt raises `pickle.UnpicklingError`. Both use value-free transport causes.
+- Process mode: the budget also covers receiving the result. On POSIX a long result is
+  written in two parts, and a child that stalled between or during them (stopped, or
+  blocked in a profile hook) blocked `run` for good; it is now stopped at the deadline
+  (terminated, and killed 1 second later) and the call raises `CallTimeout`.
+- Process mode: a child error whose pickle rebuilds as something other than an exception
+  arrives as the `RuntimeError` stand-in naming its type; `run` raised an
+  `AttributeError` or `TypeError` from inside calltimeout, and the child's error was lost.
+- Process mode: a call whose function or arguments cannot be pickled raises
+  `pickle.PicklingError` before any process starts, chained from a fresh standard
+  exception with fixed text. The cause preserves only a safe standard error category;
+  custom errors use `RuntimeError`. Original text, notes, frames and exception chains
+  are discarded without mutating the original error. This also applies to call loading,
+  result sending and result rebuilding failures. A call
+  holding objects that `multiprocessing` only pickles while a child starts (locks,
+  queues, shared values), any number of them, is first rehearsed as the start will
+  pickle it, so one whose contents cannot pickle (a `Value` guarded by a
+  `threading.Lock`) fails the same way, and one that still fails when the start pickles
+  it again (an object that pickles only once, a manager proxy whose pickling raises)
+  raises the same error, its child
+  stopped before it runs anything; a `KeyboardInterrupt` or `SystemExit` raised there is
+  raised as it is, once that child is stopped, instead of escaping half way through the
+  start, which on Windows could break later calls passing pipe ends. Under forkserver, a
+  call holding more than 248 descriptors (pipe ends, sockets, two per queue, one per block
+  of shared memory behind `Value` and `Array` objects, all named in the message), more than
+  one message to the fork server carries, raises `pickle.PicklingError` before any
+  process starts instead of an undocumented `OSError` or `ValueError` from the start. An
+  argument whose pickling raised `NotImplementedError` (a pool), `RecursionError` or a
+  `RuntimeError` used to fail after the child was created, and on Windows it then broke
+  the next process-mode call.
+- Process mode: the call's function and arguments are pickled once, before the start;
+  only its pipe ends, sockets and manager proxies, or the whole call when it holds locks
+  or queues, are pickled by the start itself. Pipe ends and sockets are handed to the
+  child by that start (POSIX passes the descriptors with it, Windows duplicates them
+  straight into the child), so none is left open in the caller, even when the budget
+  runs out while pickling the call or before the child has loaded it. Such a call left a
+  duplicate of each one open in the caller (on Windows also one of the result pipe,
+  whatever the call held; under forkserver the caller also printed `ConnectionResetError`
+  tracebacks), so the reader of that pipe never saw its end and handles ran out. A
+  manager proxy goes with its manager's authkey, as `multiprocessing` sends it: one of a
+  manager with its own authkey failed in the child with `AuthenticationError` unless the
+  call also held a lock. An argument whose `__class__` raises is sent as it pickles.
+- Process mode frees the child's handles as soon as the call ends. A call that raised
+  kept its child's process object, and its two descriptors or handles, alive in a
+  reference cycle until the next garbage collection, so a loop of failing calls could
+  run out of file descriptors (`OSError: [Errno 24] Too many open files`).
+- A generic process-mode `run` preserves a supplied callable's process timeout
+  decorator, including its independent deadline, fallback and zero-budget no-call rule.
+  Wrapper bypass is authorized once only by a child call initiated by that decorator.
+- `with_timeout` in process mode sends a callable that pickles by value (a
+  `functools.partial`, a callable object) as it is, as `run` does; it failed with
+  `AttributeError` under spawn and forkserver.
+- `with_timeout` in process mode works under a `classmethod` under spawn and forkserver
+  (the wrapper is sent through its class); it raised `pickle.PicklingError`.
+- Process mode: a child error whose type's own attributes raise (its traceback cannot be
+  formatted, its type cannot be named or pickled) arrives as a `RuntimeError` quoting its
+  text; the child crashed with exit code 1 and `run` raised `CallCrashed`.
+- A callable whose `__getattr__` raises something other than `AttributeError` is run
+  like any other; that error escaped from the coroutine check in `run` and
+  `with_timeout`.
+- `timeout` is annotated `float | numbers.Real` in `run` and `with_timeout`, so type
+  checkers accept a `Fraction`, which already worked.
+- Signal mode: an exception raised with an explicit cause while handling the timeout
+  (`raise E from other`) counts as the timeout, like `raise E` and `raise E from None`;
+  it escaped as `E`.
+- Signal mode: no timer is armed for less than 1 ms, so a timer tick less than 1 ms
+  before the deadline ends the call there, a timeout under 1 ms ends it at once without
+  starting it (like a zero timeout), and an enclosing timer due sooner than 1 ms has its
+  handler run up to 1 ms late. A timer that short could fire before the interrupted
+  system call blocked again, so a blocking call overran by its whole length.
+- Signal mode: a timer tick that lands after the call has finished can no longer re-arm
+  the timer.
+- Signal mode: an interval timer that was already running keeps its own schedule. Each
+  tick due during a call was counted from when it ran instead of when it was due, so up
+  to 1 ms of lateness per tick added up and ticks were lost (400 calls of 5 ms under a
+  10 ms timer: about 10 ticks lost, the last 120 to 130 ms late). On Linux a timer read
+  in the instant between a tick and its delivery shows no time left, and the call then
+  left it disarmed for good; it is now kept.
+- Signal mode: a `SIGALRM` taken as a call starts, before its timer is set (a tick of an
+  enclosing timer already on its way, also from an enclosing signal-mode call), goes to
+  the handler that was there before. It reached the call's own handler half set up: that
+  raised `NameError` and stayed installed for good (later code, even a plain
+  `time.sleep`, raised `NameError`), or it took the tick as its own and dropped it, so an
+  enclosing signal-mode deadline could be lost and the call run forever. A `SIGALRM`
+  that is not the call's own timer's (sent with `kill`) also goes to that handler.
+- Signal mode: an enclosing timer keeps its schedule over any number of calls. The call
+  reads and replaces it in one step, gives back the exact schedule it took, and waits
+  for a tick due within 0.2 ms before taking the timer (Linux 6.6 can drop a tick whose
+  timer is replaced in the instant it fires). Each call moved the timer by the time spent
+  reading and setting it, so over many calls a one-shot timer fired up to 18 ms early
+  (about 90,000 quick calls) and an interval timer drifted by milliseconds, lost ticks
+  (39 of 300 under calls that each timed out) and delivered some twice.
+- Every mode starts its budget after argument validation and keyword copying. Those
+  caller-side hooks are not interrupted. Thread mode includes starting the thread.
+- The coroutine error names `asyncio.wait_for()` as well as `asyncio.timeout()`, which
+  only exists from Python 3.11.
+- Every public name has a docstring with an example that runs as a doctest, `Mode` in
+  the package docstring (typing caches `Literal` aliases, so a docstring of its own would
+  relabel the caller's identical aliases), and a new GUIDE covers each mode, every
+  error and use from async code. The process-mode examples guard their entry point and
+  are tested as scripts.
+- `Development Status :: 5 - Production/Stable`.
+
+## [0.2.0] - 2026-10-12
+
+Published on PyPI on 2026-10-31; no git tag (commit 9b6975c on `main`).
 
 ### Added
 
@@ -48,9 +229,11 @@ All notable changes to this project are documented here. The format follows
 - `CallTimeout` keeps its `timeout` through pickle and copy, and reports the validated
   number of seconds.
 
-## [0.1.0]
+## [0.1.0] - 2026-10-11
 
-- First release.
+Never published or tagged (commit a3b7c15).
+
+- First version.
 - `run(fn, timeout, *, args, kwargs, mode, default)` runs a callable under a
   wall-clock timeout and returns its typed result.
 - Raises `CallTimeout` (a subclass of `TimeoutError`) on overrun, or returns
